@@ -1,27 +1,34 @@
 /*
  * Grist — Granular Sample Synth (DPF)
  *
- * v1 placeholder DSP: sine synth to validate CLAP + MIDI + UI plumbing.
+ * v0.2: WAV sample load + simple sample playback (MIDI in → audio out)
+ * Next: granular engine
  */
 
 #include "Grist.hpp"
 #include "DistrhoPluginInfo.h"
 
+#define DR_WAV_IMPLEMENTATION
+#include "DSP/dr_wav.h"
+
 #include <cmath>
 #include <algorithm>
+#include <cstring>
 
-// DPF toolchains may not use C++17 by default; provide our own clamp.
+START_NAMESPACE_DISTRHO
+
 static inline float fclampf(const float v, const float lo, const float hi)
 {
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
-START_NAMESPACE_DISTRHO
-
-static constexpr double kTwoPi = 6.283185307179586476925286766559;
+static inline float lerp(const float a, const float b, const float t)
+{
+    return a + (b - a) * t;
+}
 
 Grist::Grist()
-    : Plugin(kParamCount, 0, 0),
+    : Plugin(kParamCount, 0, 1), // params, programs, states
       fGain(0.8f),
       fGrainSizeMs(60.0f),
       fDensity(20.0f),
@@ -33,21 +40,44 @@ Grist::Grist()
       gateOn(false),
       currentNote(60),
       currentVelocity(0.8f),
-      phase(0.0)
+      sampleRateLoaded(0),
+      playhead(0.0)
 {
 }
 
 void Grist::activate()
 {
-    phase = 0.0;
     gateOn = false;
     currentNote = 60;
     currentVelocity = 0.8f;
+    playhead = 0.0;
 }
 
 void Grist::sampleRateChanged(double newSampleRate)
 {
     fSampleRate = newSampleRate > 1.0 ? newSampleRate : 48000.0;
+}
+
+void Grist::initState(uint32_t index, State& state)
+{
+    if (index == 0)
+    {
+        state.key = "sample";
+        state.defaultValue = "";
+        state.hints = kStateIsFilenamePath;
+        state.label = "Sample";
+    }
+}
+
+void Grist::setState(const char* key, const char* value)
+{
+    if (std::strcmp(key, "sample") != 0)
+        return;
+
+    if (value == nullptr || value[0] == '\0')
+        return;
+
+    loadWavFile(value);
 }
 
 void Grist::initParameter(uint32_t index, Parameter& parameter)
@@ -59,7 +89,6 @@ void Grist::initParameter(uint32_t index, Parameter& parameter)
     case kParamGain:
         parameter.name = "Gain";
         parameter.symbol = "gain";
-        parameter.unit = "";
         parameter.ranges.def = 0.8f;
         parameter.ranges.min = 0.0f;
         parameter.ranges.max = 1.0f;
@@ -166,8 +195,63 @@ void Grist::setParameterValue(uint32_t index, float value)
 
 double Grist::midiNoteToHz(int note) const
 {
-    // A4 = 440 at MIDI 69
     return 440.0 * std::pow(2.0, (note - 69) / 12.0);
+}
+
+bool Grist::loadWavFile(const char* path)
+{
+    drwav wav;
+    if (!drwav_init_file(&wav, path, nullptr))
+        return false;
+
+    // minimal loader expects PCM 16-bit in our trimmed dr_wav.
+    const uint32_t ch = wav.channels;
+    const uint32_t sr = wav.sampleRate;
+    const uint64_t frames = wav.totalPCMFrameCount;
+    if (ch < 1 || ch > 2 || frames == 0)
+    {
+        drwav_uninit(&wav);
+        return false;
+    }
+
+    std::vector<float> interleaved;
+    interleaved.resize((size_t)frames * ch);
+    const uint64_t read = drwav_read_pcm_frames_f32(&wav, frames, interleaved.data());
+    drwav_uninit(&wav);
+    if (read == 0)
+        return false;
+
+    std::vector<float> L, R;
+    L.resize((size_t)read);
+    R.resize((size_t)read);
+
+    if (ch == 1)
+    {
+        for (uint64_t i = 0; i < read; ++i)
+        {
+            const float s = interleaved[(size_t)i];
+            L[(size_t)i] = s;
+            R[(size_t)i] = s;
+        }
+    }
+    else
+    {
+        for (uint64_t i = 0; i < read; ++i)
+        {
+            L[(size_t)i] = interleaved[(size_t)i * 2 + 0];
+            R[(size_t)i] = interleaved[(size_t)i * 2 + 1];
+        }
+    }
+
+    {
+        const std::lock_guard<std::mutex> lock(sampleMutex);
+        sampleL.swap(L);
+        sampleR.swap(R);
+        sampleRateLoaded = sr;
+        samplePath = path;
+    }
+
+    return true;
 }
 
 void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
@@ -176,16 +260,17 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
     float* outL = outputs[0];
     float* outR = outputs[1];
 
-    // Parse MIDI events for this block.
+    // default clear
+    for (uint32_t i = 0; i < frames; ++i) { outL[i] = 0.0f; outR[i] = 0.0f; }
+
+    // MIDI parse
     for (uint32_t i = 0; i < midiEventCount; ++i)
     {
         const MidiEvent& ev = midiEvents[i];
         if (ev.size < 3) continue;
-
         const uint8_t st = ev.data[0] & 0xF0;
         const uint8_t note = ev.data[1] & 0x7F;
         const uint8_t vel  = ev.data[2] & 0x7F;
-
         const bool isNoteOn  = (st == 0x90) && (vel > 0);
         const bool isNoteOff = (st == 0x80) || ((st == 0x90) && (vel == 0));
 
@@ -194,8 +279,11 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
             gateOn = true;
             currentNote = (int)note;
             currentVelocity = (float)vel / 127.0f;
-            // reset phase for now
-            phase = 0.0;
+
+            // reset playback position on each note
+            std::lock_guard<std::mutex> lock(sampleMutex);
+            const size_t len = sampleL.size();
+            playhead = (len > 0) ? (double)(fPosition * (double)(len - 1)) : 0.0;
         }
         else if (isNoteOff)
         {
@@ -204,29 +292,52 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
         }
     }
 
-    // Generate audio
     if (!gateOn)
-    {
-        for (uint32_t i = 0; i < frames; ++i) { outL[i] = 0.0f; outR[i] = 0.0f; }
         return;
+
+    // Snapshot sample pointers/length without holding lock during render.
+    std::vector<float> Lcopy;
+    std::vector<float> Rcopy;
+    uint32_t srLoaded = 0;
+    {
+        std::lock_guard<std::mutex> lock(sampleMutex);
+        srLoaded = sampleRateLoaded;
+        // Avoid copying if no sample loaded
+        if (sampleL.empty() || sampleR.empty())
+            return;
+        Lcopy = sampleL;
+        Rcopy = sampleR;
     }
 
+    const size_t len = Lcopy.size();
+    if (len < 2)
+        return;
+
+    // playback rate: note pitch relative to C4 (60)
     const double baseHz = midiNoteToHz(currentNote);
+    const double refHz  = midiNoteToHz(60);
+    const double noteMul = baseHz / refHz;
     const double pitchMul = std::pow(2.0, (double)fPitch / 12.0);
-    const double hz = baseHz * pitchMul;
-    const double phaseInc = kTwoPi * hz / fSampleRate;
+    const double rate = noteMul * pitchMul * ((srLoaded > 0) ? ((double)srLoaded / fSampleRate) : 1.0);
+
     const float amp = fGain * currentVelocity;
 
-    double ph = phase;
+    double ph = playhead;
     for (uint32_t i = 0; i < frames; ++i)
     {
-        const float s = (float)std::sin(ph) * amp;
-        outL[i] = s;
-        outR[i] = s;
-        ph += phaseInc;
-        if (ph >= kTwoPi) ph -= kTwoPi;
+        const size_t idx = (size_t)ph;
+        if (idx + 1 >= len)
+            break;
+        const float frac = (float)(ph - (double)idx);
+        const float l = lerp(Lcopy[idx], Lcopy[idx + 1], frac) * amp;
+        const float r = lerp(Rcopy[idx], Rcopy[idx + 1], frac) * amp;
+        outL[i] = l;
+        outR[i] = r;
+        ph += rate;
+        if (ph >= (double)(len - 1))
+            ph = (double)(len - 1);
     }
-    phase = ph;
+    playhead = ph;
 }
 
 Plugin* createPlugin() { return new Grist(); }

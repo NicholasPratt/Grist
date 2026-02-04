@@ -16,6 +16,7 @@ public:
 
 protected:
     void parameterChanged(uint32_t index, float value) override;
+    void stateChanged(const char* key, const char* value) override;
 
     void onNanoDisplay() override;
     bool onMouse(const MouseEvent& ev) override;
@@ -33,6 +34,9 @@ private:
     };
 
     static constexpr uint32_t kNumSliders = 7;
+    // Simple load button
+    float btnX, btnY, btnW, btnH;
+    char sampleLabel[96];
     Slider sliders[kNumSliders];
     int active;
 

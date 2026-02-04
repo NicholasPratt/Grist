@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
 static inline float fclampf(const float v, const float lo, const float hi)
 {
@@ -17,8 +18,10 @@ START_NAMESPACE_DISTRHO
 
 GristUI::GristUI()
     : UI(DISTRHO_UI_DEFAULT_WIDTH, DISTRHO_UI_DEFAULT_HEIGHT),
-      active(-1)
+      active(-1),
+      btnX(420.0f), btnY(14.0f), btnW(200.0f), btnH(28.0f)
 {
+    std::snprintf(sampleLabel, sizeof(sampleLabel), "No sample loaded");
     loadSharedResources();
     initSliders();
 }
@@ -72,6 +75,25 @@ void GristUI::parameterChanged(uint32_t index, float value)
     }
 }
 
+void GristUI::stateChanged(const char* key, const char* value)
+{
+    if (key && std::strcmp(key, "sample") == 0)
+    {
+        if (value && value[0] != '\0')
+        {
+            // show only filename tail
+            const char* lastSlash = std::strrchr(value, '/');
+            const char* name = lastSlash ? (lastSlash + 1) : value;
+            std::snprintf(sampleLabel, sizeof(sampleLabel), "Sample: %s", name);
+        }
+        else
+        {
+            std::snprintf(sampleLabel, sizeof(sampleLabel), "No sample loaded");
+        }
+        repaint();
+    }
+}
+
 int GristUI::hitTest(float x, float y) const
 {
     for (uint32_t i = 0; i < kNumSliders; ++i)
@@ -107,12 +129,23 @@ bool GristUI::onMouse(const MouseEvent& ev)
     if (ev.button != 1)
         return false;
 
+    const float mx = ev.pos.getX();
+    const float my = ev.pos.getY();
+
     if (ev.press)
     {
-        active = hitTest(ev.pos.getX(), ev.pos.getY());
+        // Load button
+        if (mx >= btnX && mx <= btnX + btnW && my >= btnY && my <= btnY + btnH)
+        {
+            // Ask host for a filename for state key "sample"
+            requestStateFile("sample");
+            return true;
+        }
+
+        active = hitTest(mx, my);
         if (active >= 0)
         {
-            setParamFromNorm((uint32_t)active, yToNorm(sliders[active], ev.pos.getY()));
+            setParamFromNorm((uint32_t)active, yToNorm(sliders[active], my));
             repaint();
             return true;
         }
@@ -154,7 +187,27 @@ void GristUI::onNanoDisplay()
 
     fontSize(11.0f);
     fillColor(0.7f, 0.7f, 0.7f);
-    text(18.0f, 40.0f, "CLAP synth v0.1 (sine placeholder)", nullptr);
+    text(18.0f, 40.0f, "CLAP synth v0.2 (sample playback WIP)", nullptr);
+
+    // Load button
+    beginPath();
+    roundedRect(btnX, btnY, btnW, btnH, 6.0f);
+    fillColor(0.18f, 0.18f, 0.2f);
+    fill();
+    strokeColor(0.35f, 0.35f, 0.4f);
+    strokeWidth(1.0f);
+    stroke();
+
+    fontSize(12.0f);
+    fillColor(0.9f, 0.9f, 0.9f);
+    textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
+    text(btnX + btnW*0.5f, btnY + btnH*0.5f, "Load Sample…", nullptr);
+
+    // Sample label
+    fontSize(11.0f);
+    fillColor(0.75f, 0.75f, 0.75f);
+    textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
+    text(18.0f, 52.0f, sampleLabel, nullptr);
 
     for (uint32_t i = 0; i < kNumSliders; ++i)
     {

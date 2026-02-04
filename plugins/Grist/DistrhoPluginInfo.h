@@ -19,6 +19,7 @@
 #define DISTRHO_PLUGIN_IS_RT_SAFE      1
 #define DISTRHO_PLUGIN_WANT_MIDI_INPUT 1
 #define DISTRHO_PLUGIN_WANT_MIDI_OUTPUT 0
+#define DISTRHO_PLUGIN_WANT_STATE 1
 
 // Synth: no audio inputs, stereo out
 #define DISTRHO_PLUGIN_NUM_INPUTS      0

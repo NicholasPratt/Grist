@@ -9,6 +9,10 @@
 
 #include "DistrhoPlugin.hpp"
 
+#include <vector>
+#include <mutex>
+#include <string>
+
 START_NAMESPACE_DISTRHO
 
 class Grist : public Plugin {
@@ -28,6 +32,9 @@ protected:
     float getParameterValue(uint32_t index) const override;
     void setParameterValue(uint32_t index, float value) override;
 
+    void initState(uint32_t index, State& state) override;
+    void setState(const char* key, const char* value) override;
+
     void activate() override;
     void sampleRateChanged(double newSampleRate) override;
 
@@ -45,14 +52,22 @@ private:
     float fPitch;       // semitone offset
     float fRandomPitch;
 
-    // Sine placeholder synth state
+    // Sample playback state (v0.2)
     double fSampleRate;
     bool gateOn;
     int currentNote;
     float currentVelocity; // 0..1
-    double phase;
+
+    std::mutex sampleMutex;
+    std::vector<float> sampleL;
+    std::vector<float> sampleR;
+    uint32_t sampleRateLoaded;
+    std::string samplePath;
+
+    double playhead; // in samples (fractional)
 
     double midiNoteToHz(int note) const;
+    bool loadWavFile(const char* path);
 
     DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Grist)
 };
