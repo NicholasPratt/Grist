@@ -81,7 +81,6 @@ void GristUI::stateChanged(const char* key, const char* value)
     {
         if (value && value[0] != '\0')
         {
-            // show only filename tail
             const char* lastSlash = std::strrchr(value, '/');
             const char* name = lastSlash ? (lastSlash + 1) : value;
             std::snprintf(sampleLabel, sizeof(sampleLabel), "Sample: %s", name);
@@ -93,6 +92,26 @@ void GristUI::stateChanged(const char* key, const char* value)
         repaint();
     }
 }
+
+#if DISTRHO_UI_FILE_BROWSER
+void GristUI::uiFileBrowserSelected(const char* filename)
+{
+    if (filename == nullptr || filename[0] == '\0')
+    {
+        std::snprintf(sampleLabel, sizeof(sampleLabel), "Load cancelled");
+        repaint();
+        return;
+    }
+
+    // Send to DSP as a state (filename path)
+    setState("sample", filename);
+    // UI label will update once stateChanged is called back by host/UI sync, but update optimistically too.
+    const char* lastSlash = std::strrchr(filename, '/');
+    const char* name = lastSlash ? (lastSlash + 1) : filename;
+    std::snprintf(sampleLabel, sizeof(sampleLabel), "Loading: %s", name);
+    repaint();
+}
+#endif
 
 int GristUI::hitTest(float x, float y) const
 {
@@ -137,8 +156,18 @@ bool GristUI::onMouse(const MouseEvent& ev)
         // Load button
         if (mx >= btnX && mx <= btnX + btnW && my >= btnY && my <= btnY + btnH)
         {
-            // Ask host for a filename for state key "sample"
-            requestStateFile("sample");
+            bool ok = false;
+
+            // Prefer native file browser via UI (more reliable across hosts), fallback to host state request.
+#if DISTRHO_UI_FILE_BROWSER
+            ok = openFileBrowser();
+#else
+            ok = requestStateFile("sample");
+#endif
+
+            if (!ok)
+                std::snprintf(sampleLabel, sizeof(sampleLabel), "Load failed (host blocked file dialog)");
+            repaint();
             return true;
         }
 

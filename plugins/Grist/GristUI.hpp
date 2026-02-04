@@ -18,6 +18,10 @@ protected:
     void parameterChanged(uint32_t index, float value) override;
     void stateChanged(const char* key, const char* value) override;
 
+#if DISTRHO_UI_FILE_BROWSER
+    void uiFileBrowserSelected(const char* filename) override;
+#endif
+
     void onNanoDisplay() override;
     bool onMouse(const MouseEvent& ev) override;
     bool onMotion(const MotionEvent& ev) override;
