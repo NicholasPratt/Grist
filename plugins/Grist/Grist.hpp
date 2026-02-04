@@ -68,6 +68,7 @@ private:
 
     double midiNoteToHz(int note) const;
     bool loadWavFile(const char* path);
+    bool loadDefaultSample();
 
     DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Grist)
 };

@@ -14,6 +14,7 @@
 #include <cmath>
 #include <algorithm>
 #include <cstring>
+#include <cstdlib>
 
 START_NAMESPACE_DISTRHO
 
@@ -51,6 +52,10 @@ void Grist::activate()
     currentNote = 60;
     currentVelocity = 0.8f;
     playhead = 0.0;
+
+    // Try loading default sample location on activate (no dialogs needed).
+    if (sampleL.empty())
+        loadDefaultSample();
 }
 
 void Grist::sampleRateChanged(double newSampleRate)
@@ -76,6 +81,12 @@ void Grist::setState(const char* key, const char* value)
 
     if (value == nullptr || value[0] == '\0')
         return;
+
+    if (std::strcmp(value, "__DEFAULT__") == 0)
+    {
+        loadDefaultSample();
+        return;
+    }
 
     loadWavFile(value);
 }
@@ -196,6 +207,15 @@ void Grist::setParameterValue(uint32_t index, float value)
 double Grist::midiNoteToHz(int note) const
 {
     return 440.0 * std::pow(2.0, (note - 69) / 12.0);
+}
+
+bool Grist::loadDefaultSample()
+{
+    const char* home = std::getenv("HOME");
+    if (!home) return false;
+    std::string p(home);
+    p += "/Documents/samples/grist.wav";
+    return loadWavFile(p.c_str());
 }
 
 bool Grist::loadWavFile(const char* path)

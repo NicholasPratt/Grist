@@ -38,9 +38,10 @@ private:
     };
 
     static constexpr uint32_t kNumSliders = 7;
-    // Simple load button
-    float btnX, btnY, btnW, btnH;
-    char sampleLabel[96];
+    // Simple buttons
+    float btnX, btnY, btnW, btnH;      // reload
+    float btn2X, btn2Y, btn2W, btn2H;  // hint
+    char sampleLabel[120];
     Slider sliders[kNumSliders];
     int active;
 

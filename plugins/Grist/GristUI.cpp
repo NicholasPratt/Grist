@@ -19,9 +19,10 @@ START_NAMESPACE_DISTRHO
 GristUI::GristUI()
     : UI(DISTRHO_UI_DEFAULT_WIDTH, DISTRHO_UI_DEFAULT_HEIGHT),
       active(-1),
-      btnX(420.0f), btnY(14.0f), btnW(200.0f), btnH(28.0f)
+      btnX(400.0f), btnY(14.0f), btnW(220.0f), btnH(28.0f),
+      btn2X(18.0f), btn2Y(14.0f), btn2W(360.0f), btn2H(28.0f)
 {
-    std::snprintf(sampleLabel, sizeof(sampleLabel), "No sample loaded");
+    std::snprintf(sampleLabel, sizeof(sampleLabel), "Sample path: ~/Documents/samples/grist.wav");
     loadSharedResources();
     initSliders();
 }
@@ -156,17 +157,9 @@ bool GristUI::onMouse(const MouseEvent& ev)
         // Load button
         if (mx >= btnX && mx <= btnX + btnW && my >= btnY && my <= btnY + btnH)
         {
-            bool ok = false;
-
-            // Prefer native file browser via UI (more reliable across hosts), fallback to host state request.
-#if DISTRHO_UI_FILE_BROWSER
-            ok = openFileBrowser();
-#else
-            ok = requestStateFile("sample");
-#endif
-
-            if (!ok)
-                std::snprintf(sampleLabel, sizeof(sampleLabel), "Load failed (host blocked file dialog)");
+            // No dialogs: tell DSP to reload from default path via state value "__DEFAULT__"
+            setState("sample", "__DEFAULT__");
+            std::snprintf(sampleLabel, sizeof(sampleLabel), "Reloading: ~/Documents/samples/grist.wav");
             repaint();
             return true;
         }
@@ -218,7 +211,7 @@ void GristUI::onNanoDisplay()
     fillColor(0.7f, 0.7f, 0.7f);
     text(18.0f, 40.0f, "CLAP synth v0.2 (sample playback WIP)", nullptr);
 
-    // Load button
+    // Reload button (no dialogs)
     beginPath();
     roundedRect(btnX, btnY, btnW, btnH, 6.0f);
     fillColor(0.18f, 0.18f, 0.2f);
@@ -230,7 +223,7 @@ void GristUI::onNanoDisplay()
     fontSize(12.0f);
     fillColor(0.9f, 0.9f, 0.9f);
     textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
-    text(btnX + btnW*0.5f, btnY + btnH*0.5f, "Load Sample…", nullptr);
+    text(btnX + btnW*0.5f, btnY + btnH*0.5f, "Reload grist.wav", nullptr);
 
     // Sample label
     fontSize(11.0f);
