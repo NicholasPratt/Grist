@@ -25,22 +25,15 @@ UI_TYPE = opengl
 
 include $(DPF_PATH)/Makefile.plugins.mk
 
-# Build targets (only when OpenGL is available for UI)
-ifeq ($(HAVE_OPENGL),true)
-TARGETS += jack
-TARGETS += lv2_sep
-TARGETS += vst2
-TARGETS += vst3
+# Build targets
+# v1: CLAP only (fast iteration)
 TARGETS += clap
-else
-$(warning OpenGL not found - building DSP-only plugins without UI)
+
+# If OpenGL is missing, we still build CLAP (DSP-only); UI will be disabled.
+ifeq ($(HAVE_OPENGL),false)
+$(warning OpenGL not found - building CLAP DSP-only (no UI))
 $(warning Install libgl-dev for UI support: sudo apt install libgl-dev)
-# Clear UI files when building without OpenGL
 FILES_UI =
-TARGETS += lv2
-TARGETS += vst2
-TARGETS += vst3
-TARGETS += clap
 endif
 
 all: $(TARGETS)

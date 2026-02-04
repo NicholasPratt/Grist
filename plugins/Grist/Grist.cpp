@@ -1,125 +1,122 @@
 /*
- * Transistor Distortion Plugin - DSP Implementation
+ * Grist — Granular Sample Synth (DPF)
+ *
+ * v1 placeholder DSP: sine synth to validate CLAP + MIDI + UI plumbing.
  */
 
 #include "Grist.hpp"
+#include "DistrhoPluginInfo.h"
+
+#include <cmath>
+#include <algorithm>
+
+// DPF toolchains may not use C++17 by default; provide our own clamp.
+static inline float fclampf(const float v, const float lo, const float hi)
+{
+    return v < lo ? lo : (v > hi ? hi : v);
+}
 
 START_NAMESPACE_DISTRHO
 
+static constexpr double kTwoPi = 6.283185307179586476925286766559;
+
 Grist::Grist()
-    : Plugin(kParamCount, 0, 0), // parameters, programs, states
-      fGate(-60.0f),
-      fInputGain(0.0f),
-      fDrive(50.0f),
-      fTone(4000.0f),
-      fResonance(20.0f),
-      fEnvMod(0.0f),
-      fLowCut(80.0f),
-      fOutput(0.0f),
-      fMix(100.0f),
-      gateEnvelope(0.0f),
-      gateAttackCoef(0.0f),
-      gateReleaseCoef(0.0f),
-      toneEnvelope(0.0f),
-      toneEnvAttack(0.0f),
-      toneEnvRelease(0.0f),
-      fSampleRate(48000.0)
+    : Plugin(kParamCount, 0, 0),
+      fGain(0.8f),
+      fGrainSizeMs(60.0f),
+      fDensity(20.0f),
+      fPosition(0.5f),
+      fSpray(0.0f),
+      fPitch(0.0f),
+      fRandomPitch(0.0f),
+      fSampleRate(48000.0),
+      gateOn(false),
+      currentNote(60),
+      currentVelocity(0.8f),
+      phase(0.0)
 {
-    updateFilters();
+}
+
+void Grist::activate()
+{
+    phase = 0.0;
+    gateOn = false;
+    currentNote = 60;
+    currentVelocity = 0.8f;
+}
+
+void Grist::sampleRateChanged(double newSampleRate)
+{
+    fSampleRate = newSampleRate > 1.0 ? newSampleRate : 48000.0;
 }
 
 void Grist::initParameter(uint32_t index, Parameter& parameter)
 {
+    parameter.hints = kParameterIsAutomatable;
+
     switch (index)
     {
-    case kParamGate:
-        parameter.name = "Gate";
-        parameter.symbol = "gate";
-        parameter.hints = kParameterIsAutomatable;
-        parameter.unit = "dB";
-        parameter.ranges.def = -60.0f;
-        parameter.ranges.min = -80.0f;
-        parameter.ranges.max = 0.0f;
-        break;
-
-    case kParamInputGain:
-        parameter.name = "Input Gain";
-        parameter.symbol = "input_gain";
-        parameter.hints = kParameterIsAutomatable;
-        parameter.unit = "dB";
-        parameter.ranges.def = 0.0f;
+    case kParamGain:
+        parameter.name = "Gain";
+        parameter.symbol = "gain";
+        parameter.unit = "";
+        parameter.ranges.def = 0.8f;
         parameter.ranges.min = 0.0f;
-        parameter.ranges.max = 20.0f;
+        parameter.ranges.max = 1.0f;
         break;
 
-    case kParamDrive:
-        parameter.name = "Drive";
-        parameter.symbol = "drive";
-        parameter.hints = kParameterIsAutomatable;
+    case kParamGrainSizeMs:
+        parameter.name = "Grain Size";
+        parameter.symbol = "grain_size_ms";
+        parameter.unit = "ms";
+        parameter.ranges.def = 60.0f;
+        parameter.ranges.min = 5.0f;
+        parameter.ranges.max = 250.0f;
+        break;
+
+    case kParamDensity:
+        parameter.name = "Density";
+        parameter.symbol = "density";
+        parameter.unit = "gr/s";
+        parameter.ranges.def = 20.0f;
+        parameter.ranges.min = 1.0f;
+        parameter.ranges.max = 80.0f;
+        break;
+
+    case kParamPosition:
+        parameter.name = "Position";
+        parameter.symbol = "position";
         parameter.unit = "%";
         parameter.ranges.def = 50.0f;
         parameter.ranges.min = 0.0f;
         parameter.ranges.max = 100.0f;
         break;
 
-    case kParamTone:
-        parameter.name = "Tone";
-        parameter.symbol = "tone";
-        parameter.hints = kParameterIsAutomatable | kParameterIsLogarithmic;
-        parameter.unit = "Hz";
-        parameter.ranges.def = 4000.0f;
-        parameter.ranges.min = 1000.0f;
-        parameter.ranges.max = 8000.0f;
-        break;
-
-    case kParamResonance:
-        parameter.name = "Resonance";
-        parameter.symbol = "resonance";
-        parameter.hints = kParameterIsAutomatable;
+    case kParamSpray:
+        parameter.name = "Spray";
+        parameter.symbol = "spray";
         parameter.unit = "%";
-        parameter.ranges.def = 20.0f;
+        parameter.ranges.def = 0.0f;
         parameter.ranges.min = 0.0f;
         parameter.ranges.max = 100.0f;
         break;
 
-    case kParamEnvMod:
-        parameter.name = "Env Mod";
-        parameter.symbol = "envmod";
-        parameter.hints = kParameterIsAutomatable;
-        parameter.unit = "%";
-        parameter.ranges.def = 0.0f;
-        parameter.ranges.min = -100.0f;
-        parameter.ranges.max = 100.0f;
-        break;
-
-    case kParamLowCut:
-        parameter.name = "Low Cut";
-        parameter.symbol = "lowcut";
-        parameter.hints = kParameterIsAutomatable | kParameterIsLogarithmic;
-        parameter.unit = "Hz";
-        parameter.ranges.def = 80.0f;
-        parameter.ranges.min = 20.0f;
-        parameter.ranges.max = 500.0f;
-        break;
-
-    case kParamOutput:
-        parameter.name = "Output";
-        parameter.symbol = "output";
-        parameter.hints = kParameterIsAutomatable;
-        parameter.unit = "dB";
+    case kParamPitch:
+        parameter.name = "Pitch";
+        parameter.symbol = "pitch";
+        parameter.unit = "st";
         parameter.ranges.def = 0.0f;
         parameter.ranges.min = -24.0f;
-        parameter.ranges.max = 12.0f;
+        parameter.ranges.max = 24.0f;
         break;
 
-    case kParamMix:
-        parameter.name = "Mix";
-        parameter.symbol = "mix";
-        parameter.hints = kParameterIsAutomatable;
-        parameter.unit = "%";
-        parameter.ranges.def = 100.0f;
+    case kParamRandomPitch:
+        parameter.name = "Rnd Pitch";
+        parameter.symbol = "random_pitch";
+        parameter.unit = "st";
+        parameter.ranges.def = 0.0f;
         parameter.ranges.min = 0.0f;
-        parameter.ranges.max = 100.0f;
+        parameter.ranges.max = 12.0f;
         break;
     }
 }
@@ -128,26 +125,14 @@ float Grist::getParameterValue(uint32_t index) const
 {
     switch (index)
     {
-    case kParamGate:
-        return fGate;
-    case kParamInputGain:
-        return fInputGain;
-    case kParamDrive:
-        return fDrive;
-    case kParamTone:
-        return fTone;
-    case kParamResonance:
-        return fResonance;
-    case kParamEnvMod:
-        return fEnvMod;
-    case kParamLowCut:
-        return fLowCut;
-    case kParamOutput:
-        return fOutput;
-    case kParamMix:
-        return fMix;
-    default:
-        return 0.0f;
+    case kParamGain: return fGain;
+    case kParamGrainSizeMs: return fGrainSizeMs;
+    case kParamDensity: return fDensity;
+    case kParamPosition: return fPosition * 100.0f;
+    case kParamSpray: return fSpray * 100.0f;
+    case kParamPitch: return fPitch;
+    case kParamRandomPitch: return fRandomPitch;
+    default: return 0.0f;
     }
 }
 
@@ -155,229 +140,95 @@ void Grist::setParameterValue(uint32_t index, float value)
 {
     switch (index)
     {
-    case kParamGate:
-        fGate = value;
+    case kParamGain:
+        fGain = fclampf(value, 0.0f, 1.0f);
         break;
-    case kParamInputGain:
-        fInputGain = value;
+    case kParamGrainSizeMs:
+        fGrainSizeMs = fclampf(value, 5.0f, 250.0f);
         break;
-    case kParamDrive:
-        fDrive = value;
-        waveShaper.setDrive(value / 100.0f);
+    case kParamDensity:
+        fDensity = fclampf(value, 1.0f, 80.0f);
         break;
-    case kParamTone:
-        fTone = value;
-        updateFilters();
+    case kParamPosition:
+        fPosition = fclampf(value / 100.0f, 0.0f, 1.0f);
         break;
-    case kParamResonance:
-        fResonance = value;
-        updateFilters();
+    case kParamSpray:
+        fSpray = fclampf(value / 100.0f, 0.0f, 1.0f);
         break;
-    case kParamEnvMod:
-        fEnvMod = value;
+    case kParamPitch:
+        fPitch = fclampf(value, -24.0f, 24.0f);
         break;
-    case kParamLowCut:
-        fLowCut = value;
-        updateFilters();
-        break;
-    case kParamOutput:
-        fOutput = value;
-        break;
-    case kParamMix:
-        fMix = value;
+    case kParamRandomPitch:
+        fRandomPitch = fclampf(value, 0.0f, 12.0f);
         break;
     }
 }
 
-void Grist::activate()
+double Grist::midiNoteToHz(int note) const
 {
-    // Reset filter states
-    inputHighPass.reset();
-    preEmphasis.reset();
-    toneFilter.reset();
-    highBoost.reset();
-    outputHighPass.reset();
-    dcBlocker.reset();
-    oversampler.reset();
-
-    // Reset gate envelope
-    gateEnvelope = 0.0f;
-
-    // Reset tone envelope
-    toneEnvelope = 0.0f;
+    // A4 = 440 at MIDI 69
+    return 440.0 * std::pow(2.0, (note - 69) / 12.0);
 }
 
-void Grist::deactivate()
+void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
+                const MidiEvent* midiEvents, uint32_t midiEventCount)
 {
-    // Nothing to do
-}
+    float* outL = outputs[0];
+    float* outR = outputs[1];
 
-void Grist::sampleRateChanged(double newSampleRate)
-{
-    fSampleRate = newSampleRate;
-    updateFilters();
-}
+    // Parse MIDI events for this block.
+    for (uint32_t i = 0; i < midiEventCount; ++i)
+    {
+        const MidiEvent& ev = midiEvents[i];
+        if (ev.size < 3) continue;
 
-void Grist::updateFilters()
-{
-    // Variable low cut (high-pass filter)
-    inputHighPass.setHighPass(fLowCut, 0.7071f, fSampleRate);
+        const uint8_t st = ev.data[0] & 0xF0;
+        const uint8_t note = ev.data[1] & 0x7F;
+        const uint8_t vel  = ev.data[2] & 0x7F;
 
-    // Pre-emphasis: slight high boost before distortion
-    preEmphasis.setHighShelf(2500.0f, 1.5f, 0.7071f, fSampleRate);
+        const bool isNoteOn  = (st == 0x90) && (vel > 0);
+        const bool isNoteOff = (st == 0x80) || ((st == 0x90) && (vel == 0));
 
-    // Tone control: resonant low-pass filter
-    // Q ranges from 0.5 (no resonance) to 8.0 (high resonance)
-    float Q = 0.5f + (fResonance / 100.0f) * 7.5f;
-    toneFilter.setLowPass(fTone, Q, fSampleRate);
+        if (isNoteOn)
+        {
+            gateOn = true;
+            currentNote = (int)note;
+            currentVelocity = (float)vel / 127.0f;
+            // reset phase for now
+            phase = 0.0;
+        }
+        else if (isNoteOff)
+        {
+            if (gateOn && (int)note == currentNote)
+                gateOn = false;
+        }
+    }
 
-    // Post-distortion presence boost at 3kHz (subtle)
-    highBoost.setHighShelf(3000.0f, 1.3f, 0.7071f, fSampleRate);
+    // Generate audio
+    if (!gateOn)
+    {
+        for (uint32_t i = 0; i < frames; ++i) { outL[i] = 0.0f; outR[i] = 0.0f; }
+        return;
+    }
 
-    // Fixed 200Hz high-pass at output to kill sub-bass buildup
-    outputHighPass.setHighPass(200.0f, 0.7071f, fSampleRate);
+    const double baseHz = midiNoteToHz(currentNote);
+    const double pitchMul = std::pow(2.0, (double)fPitch / 12.0);
+    const double hz = baseHz * pitchMul;
+    const double phaseInc = kTwoPi * hz / fSampleRate;
+    const float amp = fGain * currentVelocity;
 
-    // DC blocker at 10Hz
-    dcBlocker.setHighPass(10.0f, fSampleRate);
-
-    // Gate envelope coefficients (fast attack ~1ms, slow release ~100ms)
-    gateAttackCoef = std::exp(-1.0f / (0.001f * fSampleRate));
-    gateReleaseCoef = std::exp(-1.0f / (0.1f * fSampleRate));
-
-    // Tone envelope coefficients (very fast attack ~0.5ms for transients, moderate release ~50ms)
-    toneEnvAttack = std::exp(-1.0f / (0.0005f * fSampleRate));
-    toneEnvRelease = std::exp(-1.0f / (0.05f * fSampleRate));
-
-    // Update waveshaper drive
-    waveShaper.setDrive(fDrive / 100.0f);
-}
-
-void Grist::run(const float** inputs, float** outputs, uint32_t frames)
-{
-    const float* in = inputs[0];
-    float* out = outputs[0];
-
-    // Convert parameters to linear gains
-    const float gateThreshold = dbToLinear(fGate);
-    const float inputGainLin = dbToLinear(fInputGain);
-    // Internal -36dB cut to ensure safe output levels
-    const float internalCut = dbToLinear(-36.0f);
-    const float outputGainLin = dbToLinear(fOutput) * internalCut;
-    const float wetMix = fMix / 100.0f;
-    const float dryMix = 1.0f - wetMix;
-
-    // Envelope modulation parameters
-    // fEnvMod ranges -100 to +100, normalize to -1 to +1
-    const float envModAmount = fEnvMod / 100.0f;
-    // Tone frequency range in log space for smooth modulation
-    const float toneMinHz = 1000.0f;
-    const float toneMaxHz = 8000.0f;
-    const float logToneMin = std::log(toneMinHz);
-    const float logToneMax = std::log(toneMaxHz);
-    const float logToneBase = std::log(fTone);
-
-    // Q for resonant filter
-    const float Q = 0.5f + (fResonance / 100.0f) * 7.5f;
-
-    // Buffer for oversampled processing
-    float oversampledBuffer[Oversampler4x::FACTOR];
-
+    double ph = phase;
     for (uint32_t i = 0; i < frames; ++i)
     {
-        // Store dry signal for mixing
-        const float drySample = in[i];
-
-        // === NOISE GATE ===
-        // Envelope follower (peak detection)
-        const float inputLevel = std::abs(drySample);
-        if (inputLevel > gateEnvelope)
-            gateEnvelope = gateAttackCoef * gateEnvelope + (1.0f - gateAttackCoef) * inputLevel;
-        else
-            gateEnvelope = gateReleaseCoef * gateEnvelope + (1.0f - gateReleaseCoef) * inputLevel;
-
-        // Calculate gate gain (smooth transition)
-        float gateGain;
-        if (gateEnvelope < gateThreshold) {
-            // Below threshold - calculate attenuation
-            // Soft knee: gradually reduce gain as signal drops below threshold
-            float ratio = gateEnvelope / (gateThreshold + 1e-10f);
-            gateGain = ratio * ratio; // Quadratic for smooth rolloff
-        } else {
-            gateGain = 1.0f;
-        }
-
-        // === TONE ENVELOPE FOLLOWER ===
-        // Track envelope for tone modulation (uses post-gate signal level)
-        const float postGateLevel = std::abs(drySample * gateGain);
-        if (postGateLevel > toneEnvelope)
-            toneEnvelope = toneEnvAttack * toneEnvelope + (1.0f - toneEnvAttack) * postGateLevel;
-        else
-            toneEnvelope = toneEnvRelease * toneEnvelope + (1.0f - toneEnvRelease) * postGateLevel;
-
-        // Modulate tone frequency based on envelope
-        // Envelope normalized (typical guitar signal peaks ~0.5-1.0)
-        // Clamp envelope to 0-1 range for modulation
-        const float envNormalized = std::min(1.0f, toneEnvelope * 2.0f);
-
-        // Calculate modulated tone frequency in log space
-        // Positive envMod: transients push frequency UP (brighter on attack)
-        // Negative envMod: transients push frequency DOWN (darker on attack)
-        float logToneMod = logToneBase + envNormalized * envModAmount * (logToneMax - logToneMin) * 0.5f;
-        logToneMod = std::max(logToneMin, std::min(logToneMax, logToneMod));
-        const float modulatedTone = std::exp(logToneMod);
-
-        // Update tone filter with modulated frequency
-        toneFilter.setLowPass(modulatedTone, Q, fSampleRate);
-
-        // Apply gate to the wet path input
-        float sample = drySample * gateGain;
-
-        // Input stage: HP filter (low cut) and gain
-        sample = inputHighPass.process(sample);
-        sample *= inputGainLin;
-
-        // Pre-emphasis (high boost before clipping)
-        sample = preEmphasis.process(sample);
-
-        // Upsample to 4x
-        oversampler.upsample(sample, oversampledBuffer);
-
-        // Process each oversampled sample through waveshaper
-        for (int j = 0; j < Oversampler4x::FACTOR; ++j)
-        {
-            oversampledBuffer[j] = waveShaper.processWithHarmonics(oversampledBuffer[j]);
-        }
-
-        // Downsample back to original rate
-        sample = oversampler.downsample(oversampledBuffer);
-
-        // Tone control (resonant low-pass with envelope modulation)
-        sample = toneFilter.process(sample);
-
-        // High frequency presence boost
-        sample = highBoost.process(sample);
-
-        // Kill sub-bass (fixed 200Hz HP)
-        sample = outputHighPass.process(sample);
-
-        // DC blocking
-        sample = dcBlocker.processHP(sample);
-
-        // Output gain (includes internal -36dB cut)
-        sample *= outputGainLin;
-
-        // Hard limit to prevent clipping in DAW
-        if (sample > 1.0f) sample = 1.0f;
-        else if (sample < -1.0f) sample = -1.0f;
-
-        // Dry/wet mix (gate applied to dry so parallel blend stays quiet)
-        out[i] = (sample * wetMix) + (drySample * dryMix * gateGain);
+        const float s = (float)std::sin(ph) * amp;
+        outL[i] = s;
+        outR[i] = s;
+        ph += phaseInc;
+        if (ph >= kTwoPi) ph -= kTwoPi;
     }
+    phase = ph;
 }
 
-Plugin* createPlugin()
-{
-    return new Grist();
-}
+Plugin* createPlugin() { return new Grist(); }
 
 END_NAMESPACE_DISTRHO
