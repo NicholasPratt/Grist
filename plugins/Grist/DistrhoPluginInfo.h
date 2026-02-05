@@ -27,8 +27,11 @@
 
 #define DISTRHO_UI_USE_NANOVG          1
 #define DISTRHO_UI_USER_RESIZABLE      0
-#define DISTRHO_UI_DEFAULT_WIDTH       640
-#define DISTRHO_UI_DEFAULT_HEIGHT      360
+#define DISTRHO_UI_DEFAULT_WIDTH       980
+#define DISTRHO_UI_DEFAULT_HEIGHT      420
+
+// Enable DPF file browser support (requestStateFile / openFileBrowser)
+#define DISTRHO_UI_FILE_BROWSER        1
 
 enum Parameters {
     kParamGain = 0,
@@ -38,6 +41,12 @@ enum Parameters {
     kParamSpray,
     kParamPitch,
     kParamRandomPitch,
+    kParamPitchEnvAmt,
+    kParamPitchEnvDecayMs,
+    kParamAttackMs,
+    kParamReleaseMs,
+    kParamKillOnRetrig,
+    kParamNewVoiceOnRetrig,
     kParamCount
 };
 

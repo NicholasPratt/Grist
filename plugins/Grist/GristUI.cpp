@@ -19,9 +19,14 @@ START_NAMESPACE_DISTRHO
 GristUI::GristUI()
     : UI(DISTRHO_UI_DEFAULT_WIDTH, DISTRHO_UI_DEFAULT_HEIGHT),
       active(-1),
-      btnX(400.0f), btnY(14.0f), btnW(220.0f), btnH(28.0f),
-      btn2X(18.0f), btn2Y(14.0f), btn2W(360.0f), btn2H(28.0f)
+      btnX(0.0f), btnY(14.0f), btnW(0.0f), btnH(30.0f),
+      btn2X(18.0f), btn2Y(14.0f), btn2W(420.0f), btn2H(30.0f)
 {
+    // layout buttons based on window size
+    btnX = btn2X + btn2W + 12.0f;
+    btnW = std::max(180.0f, getWidth() - btnX - 18.0f);
+    btnY = btn2Y;
+    btnH = btn2H;
     std::snprintf(sampleLabel, sizeof(sampleLabel), "Sample path: ~/Documents/samples/grist.wav");
     loadSharedResources();
     initSliders();
@@ -32,8 +37,8 @@ void GristUI::initSliders()
     const float margin = 18.0f;
     const float gap = 10.0f;
     const float sliderW = (getWidth() - margin*2 - gap*(kNumSliders-1)) / (float)kNumSliders;
-    const float sliderH = getHeight() - 80.0f;
-    const float y = 52.0f;
+    const float sliderH = getHeight() - 92.0f;
+    const float y = 64.0f;
 
     const struct { uint32_t p; float minV; float maxV; const char* label; const char* unit; bool bipolar; } defs[kNumSliders] = {
         { kParamGain, 0.0f, 1.0f, "Gain", "", false },
@@ -43,6 +48,10 @@ void GristUI::initSliders()
         { kParamSpray, 0.0f, 100.0f, "Spray", "%", false },
         { kParamPitch, -24.0f, 24.0f, "Pitch", "st", true },
         { kParamRandomPitch, 0.0f, 12.0f, "Rnd", "st", false },
+        { kParamPitchEnvAmt, -48.0f, 48.0f, "PEnv", "st", true },
+        { kParamPitchEnvDecayMs, 0.0f, 5000.0f, "PDec", "ms", false },
+        { kParamAttackMs, 0.0f, 2000.0f, "Atk", "ms", false },
+        { kParamReleaseMs, 5.0f, 5000.0f, "Rel", "ms", false },
     };
 
     for (uint32_t i = 0; i < kNumSliders; ++i)
@@ -78,7 +87,10 @@ void GristUI::parameterChanged(uint32_t index, float value)
 
 void GristUI::stateChanged(const char* key, const char* value)
 {
-    if (key && std::strcmp(key, "sample") == 0)
+    if (!key)
+        return;
+
+    if (std::strcmp(key, "sample") == 0)
     {
         if (value && value[0] != '\0')
         {
@@ -91,6 +103,25 @@ void GristUI::stateChanged(const char* key, const char* value)
             std::snprintf(sampleLabel, sizeof(sampleLabel), "No sample loaded");
         }
         repaint();
+        return;
+    }
+
+    if (std::strcmp(key, "sample_status") == 0)
+    {
+        if (value && std::strcmp(value, "error") == 0)
+        {
+            // keep label as-is; error text will come via sample_error
+        }
+        repaint();
+        return;
+    }
+
+    if (std::strcmp(key, "sample_error") == 0)
+    {
+        if (value && value[0] != '\0')
+            std::snprintf(sampleLabel, sizeof(sampleLabel), "Load failed: %s", value);
+        repaint();
+        return;
     }
 }
 
@@ -154,12 +185,21 @@ bool GristUI::onMouse(const MouseEvent& ev)
 
     if (ev.press)
     {
-        // Load button
+        // Reload default sample button
         if (mx >= btnX && mx <= btnX + btnW && my >= btnY && my <= btnY + btnH)
         {
-            // No dialogs: tell DSP to reload from default path via state value "__DEFAULT__"
+            // Reload from default path via special state value
             setState("sample", "__DEFAULT__");
-            std::snprintf(sampleLabel, sizeof(sampleLabel), "Reloading: ~/Documents/samples/grist.wav");
+            std::snprintf(sampleLabel, sizeof(sampleLabel), "Reloading default: grist.wav");
+            repaint();
+            return true;
+        }
+
+        // Load sample (open file dialog)
+        if (mx >= btn2X && mx <= btn2X + btn2W && my >= btn2Y && my <= btn2Y + btn2H)
+        {
+            const bool ok = requestStateFile("sample");
+            std::snprintf(sampleLabel, sizeof(sampleLabel), ok ? "Choose a sample…" : "File dialog unavailable");
             repaint();
             return true;
         }
@@ -209,9 +249,23 @@ void GristUI::onNanoDisplay()
 
     fontSize(11.0f);
     fillColor(0.7f, 0.7f, 0.7f);
-    text(18.0f, 40.0f, "CLAP synth v0.2 (sample playback WIP)", nullptr);
+    text(18.0f, 40.0f, "CLAP synth (granular WIP) — bigger UI", nullptr);
 
-    // Reload button (no dialogs)
+    // Load sample button (file dialog)
+    beginPath();
+    roundedRect(btn2X, btn2Y, btn2W, btn2H, 6.0f);
+    fillColor(0.18f, 0.18f, 0.2f);
+    fill();
+    strokeColor(0.35f, 0.35f, 0.4f);
+    strokeWidth(1.0f);
+    stroke();
+
+    fontSize(12.0f);
+    fillColor(0.9f, 0.9f, 0.9f);
+    textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
+    text(btn2X + btn2W*0.5f, btn2Y + btn2H*0.5f, "Load sample…", nullptr);
+
+    // Reload default button
     beginPath();
     roundedRect(btnX, btnY, btnW, btnH, 6.0f);
     fillColor(0.18f, 0.18f, 0.2f);
@@ -223,7 +277,7 @@ void GristUI::onNanoDisplay()
     fontSize(12.0f);
     fillColor(0.9f, 0.9f, 0.9f);
     textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
-    text(btnX + btnW*0.5f, btnY + btnH*0.5f, "Reload grist.wav", nullptr);
+    text(btnX + btnW*0.5f, btnY + btnH*0.5f, "Reload default", nullptr);
 
     // Sample label
     fontSize(11.0f);

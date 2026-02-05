@@ -1,0 +1,14 @@
+# Build outputs
+bin/
+build/
+
+# OS / editor
+.DS_Store
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# DPF may generate this depending on toolchain
+*.o
+*.d

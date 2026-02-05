@@ -37,7 +37,7 @@ private:
         bool isBipolar;
     };
 
-    static constexpr uint32_t kNumSliders = 7;
+    static constexpr uint32_t kNumSliders = 11;
     // Simple buttons
     float btnX, btnY, btnW, btnH;      // reload
     float btn2X, btn2Y, btn2W, btn2H;  // hint
