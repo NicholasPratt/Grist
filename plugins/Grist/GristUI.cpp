@@ -141,15 +141,24 @@ void GristUI::parseActiveGrainViz(const char* value)
         if (*p != ',') break;
         ++p;
 
-        // voice index
+        // amp
         char* end4 = nullptr;
-        const long voice = std::strtol(p, &end4, 10);
+        const float amp01 = std::strtof(p, &end4);
         if (end4 == p) break;
         p = end4;
+        if (*p != ',') break;
+        ++p;
+
+        // voice index
+        char* end5 = nullptr;
+        const long voice = std::strtol(p, &end5, 10);
+        if (end5 == p) break;
+        p = end5;
 
         activeGrains[activeCount].start01 = fclampf(start01, 0.0f, 1.0f);
         activeGrains[activeCount].end01 = fclampf(end01, 0.0f, 1.0f);
         activeGrains[activeCount].age01 = fclampf(age01, 0.0f, 1.0f);
+        activeGrains[activeCount].amp01 = fclampf(amp01, 0.0f, 1.0f);
         activeGrains[activeCount].voice = (int)voice;
         ++activeCount;
 
@@ -503,8 +512,8 @@ void GristUI::onNanoDisplay()
     {
         const float innerX = waveX + 8.0f;
         const float innerW = waveW - 16.0f;
-        const float top = waveY + 10.0f;
-        const float bottom = waveY + waveH - 10.0f;
+        const float mid = waveY + waveH * 0.5f;
+        const float yRange = waveH * 0.42f;
 
         for (uint32_t g = 0; g < activeCount; ++g)
         {
@@ -516,6 +525,11 @@ void GristUI::onNanoDisplay()
             float x1 = innerX + activeGrains[g].end01 * innerW;
             if (x1 < x0) std::swap(x0, x1);
             if (x1 - x0 < 2.0f) x1 = x0 + 2.0f;
+
+            // height = grain envelope level (animated)
+            float hh = std::max(2.0f, activeGrains[g].amp01 * yRange);
+            const float top = mid - hh;
+            const float bottom = mid + hh;
 
             // per-voice color (HSV wheel)
             const int v = std::max(0, activeGrains[g].voice);

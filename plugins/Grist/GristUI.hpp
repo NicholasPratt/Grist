@@ -72,6 +72,7 @@ private:
         float start01 = 0.0f;
         float end01 = 0.0f;
         float age01 = 0.0f; // 0 new -> 1 old
+        float amp01 = 0.0f; // 0..1 visual amplitude
         int voice = 0;
     };
 
