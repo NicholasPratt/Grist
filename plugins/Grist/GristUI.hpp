@@ -72,6 +72,7 @@ private:
         float start01 = 0.0f;
         float end01 = 0.0f;
         float age01 = 0.0f; // 0 new -> 1 old
+        int voice = 0;
     };
 
     static constexpr uint32_t kMaxActiveViz = 64;

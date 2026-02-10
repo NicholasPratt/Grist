@@ -138,10 +138,19 @@ void GristUI::parseActiveGrainViz(const char* value)
         const float age01 = std::strtof(p, &end3);
         if (end3 == p) break;
         p = end3;
+        if (*p != ',') break;
+        ++p;
+
+        // voice index
+        char* end4 = nullptr;
+        const long voice = std::strtol(p, &end4, 10);
+        if (end4 == p) break;
+        p = end4;
 
         activeGrains[activeCount].start01 = fclampf(start01, 0.0f, 1.0f);
         activeGrains[activeCount].end01 = fclampf(end01, 0.0f, 1.0f);
         activeGrains[activeCount].age01 = fclampf(age01, 0.0f, 1.0f);
+        activeGrains[activeCount].voice = (int)voice;
         ++activeCount;
 
         // delimiter ; or end
@@ -508,9 +517,19 @@ void GristUI::onNanoDisplay()
             if (x1 < x0) std::swap(x0, x1);
             if (x1 - x0 < 2.0f) x1 = x0 + 2.0f;
 
+            // per-voice color (HSV wheel)
+            const int v = std::max(0, activeGrains[g].voice);
+            const float hue = (float)(v % 16) / 16.0f; // 0..1
+            const float r = std::fabs(hue * 6.0f - 3.0f) - 1.0f;
+            const float gC = 2.0f - std::fabs(hue * 6.0f - 2.0f);
+            const float b = 2.0f - std::fabs(hue * 6.0f - 4.0f);
+            const float rr = fclampf(r, 0.0f, 1.0f);
+            const float gg = fclampf(gC, 0.0f, 1.0f);
+            const float bb = fclampf(b, 0.0f, 1.0f);
+
             beginPath();
             rect(x0, top, x1 - x0, bottom - top);
-            fillColor(0.95f, 0.85f, 0.35f, alpha);
+            fillColor(rr, gg, bb, alpha);
             fill();
         }
     }

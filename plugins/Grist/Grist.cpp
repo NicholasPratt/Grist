@@ -787,7 +787,7 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
 
     // Publish grain viz to UI at ~30 Hz (best-effort).
     // - grains: comma-separated list of 0..1 floats (spawn markers)
-    // - grains_active: semicolon-separated list of "start,end,age" triples (all 0..1)
+    // - grains_active: semicolon-separated list of "start,end,age,voice" quads (start/end/age in 0..1)
     vizDecim += frames;
     const uint32_t vizInterval = (uint32_t)std::max(1.0, fSampleRate / 30.0);
     if (vizDecim >= vizInterval)
@@ -835,8 +835,8 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
                 const float age01 = (g.dur > 0) ? fclampf((float)g.age / (float)g.dur, 0.0f, 1.0f) : 1.0f;
 
                 const int n = std::snprintf(abuf + apos, sizeof(abuf) - apos,
-                                           (count == 0) ? "%.4f,%.4f,%.4f" : ";%.4f,%.4f,%.4f",
-                                           start01, end01, age01);
+                                           (count == 0) ? "%.4f,%.4f,%.4f,%u" : ";%.4f,%.4f,%.4f,%u",
+                                           start01, end01, age01, v);
                 if (n <= 0) { apos = 0; break; }
                 apos += (uint32_t)n;
                 if (apos + 24 >= sizeof(abuf)) { apos = 0; break; }
