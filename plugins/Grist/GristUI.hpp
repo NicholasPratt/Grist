@@ -20,6 +20,7 @@ public:
 protected:
     void parameterChanged(uint32_t index, float value) override;
     void stateChanged(const char* key, const char* value) override;
+    void uiIdle() override;
 
 #if DISTRHO_UI_FILE_BROWSER
     void uiFileBrowserSelected(const char* filename) override;
@@ -67,6 +68,10 @@ private:
     static constexpr uint32_t kMaxVizGrains = 64;
     float grainPos[kMaxVizGrains];
     uint32_t grainCount = 0;
+
+    // bus polling
+    uint32_t lastSpawnSeq = 0;
+    uint32_t lastActiveSeq = 0;
 
     struct ActiveGrain {
         float start01 = 0.0f;

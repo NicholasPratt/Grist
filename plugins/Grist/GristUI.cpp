@@ -3,6 +3,7 @@
  */
 
 #include "GristUI.hpp"
+#include "GristVizBus.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -246,6 +247,41 @@ void GristUI::parameterChanged(uint32_t index, float value)
         repaint();
         return;
     }
+}
+
+void GristUI::uiIdle()
+{
+    bool changed = false;
+
+    // Pull viz data from in-process bus (needed for CLAP backend)
+    uint32_t sc = 0;
+    float sp[GristVizBus::kMaxSpawn];
+    if (GristVizBus::instance().copySpawnIfNew(lastSpawnSeq, sp, sc))
+    {
+        grainCount = std::min<uint32_t>(sc, kMaxVizGrains);
+        for (uint32_t i = 0; i < grainCount; ++i)
+            grainPos[i] = sp[i];
+        changed = true;
+    }
+
+    uint32_t ac = 0;
+    GristVizBus::Active a[GristVizBus::kMaxActive];
+    if (GristVizBus::instance().copyActiveIfNew(lastActiveSeq, a, ac))
+    {
+        activeCount = std::min<uint32_t>(ac, kMaxActiveViz);
+        for (uint32_t i = 0; i < activeCount; ++i)
+        {
+            activeGrains[i].start01 = a[i].start01;
+            activeGrains[i].end01 = a[i].end01;
+            activeGrains[i].age01 = a[i].age01;
+            activeGrains[i].amp01 = a[i].amp01;
+            activeGrains[i].voice = (int)a[i].voice;
+        }
+        changed = true;
+    }
+
+    if (changed)
+        repaint();
 }
 
 void GristUI::stateChanged(const char* key, const char* value)

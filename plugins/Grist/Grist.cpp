@@ -7,6 +7,7 @@
 
 #include "Grist.hpp"
 #include "DistrhoPluginInfo.h"
+#include "GristVizBus.hpp"
 
 #define DR_WAV_IMPLEMENTATION
 #include "DSP/dr_wav.h"
@@ -797,6 +798,10 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
 
         if (vizEventCount > 0)
         {
+            // publish to shared viz bus (works for CLAP)
+            GristVizBus::instance().publishSpawn(vizEvents, vizEventCount);
+
+            // also try state updates (works on some formats)
             char buf[1024];
             uint32_t pos = 0;
             for (uint32_t ei = 0; ei < vizEventCount && pos + 16 < sizeof(buf); ++ei)
@@ -812,10 +817,12 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
         }
 
         // active grains snapshot
+        GristVizBus::Active act[GristVizBus::kMaxActive];
+        uint32_t count = 0;
+        constexpr uint32_t kMaxActiveSend = GristVizBus::kMaxActive;
+
         char abuf[1536];
         uint32_t apos = 0;
-        uint32_t count = 0;
-        constexpr uint32_t kMaxActiveSend = 64;
 
         for (uint32_t v = 0; v < kMaxVoices && count < kMaxActiveSend; ++v)
         {
@@ -840,16 +847,25 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
                 const float w = (float)(0.5 - 0.5 * std::cos(twoPi * phase));
                 const float amp01 = fclampf(w * voice.env * voice.velocity, 0.0f, 1.0f);
 
+                act[count] = { start01, end01, age01, amp01, v };
+
+                // also encode as string state (best-effort)
                 const int n = std::snprintf(abuf + apos, sizeof(abuf) - apos,
                                            (count == 0) ? "%.4f,%.4f,%.4f,%.4f,%u" : ";%.4f,%.4f,%.4f,%.4f,%u",
                                            start01, end01, age01, amp01, v);
-                if (n <= 0) { apos = 0; break; }
-                apos += (uint32_t)n;
-                if (apos + 24 >= sizeof(abuf)) { apos = 0; break; }
+                if (n > 0)
+                {
+                    apos += (uint32_t)n;
+                    if (apos + 24 >= sizeof(abuf))
+                        apos = 0; // give up on string if too big
+                }
 
                 ++count;
             }
         }
+
+        if (count > 0)
+            GristVizBus::instance().publishActive(act, count);
 
         if (apos > 0)
         {
