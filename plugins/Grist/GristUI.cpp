@@ -108,6 +108,51 @@ void GristUI::parseGrainViz(const char* value)
     }
 }
 
+void GristUI::parseActiveGrainViz(const char* value)
+{
+    activeCount = 0;
+    if (value == nullptr || value[0] == '\0')
+        return;
+
+    const char* p = value;
+    while (*p != '\0' && activeCount < kMaxActiveViz)
+    {
+        // start
+        char* end1 = nullptr;
+        const float start01 = std::strtof(p, &end1);
+        if (end1 == p) break;
+        p = end1;
+        if (*p != ',') break;
+        ++p;
+
+        // end
+        char* end2 = nullptr;
+        const float end01 = std::strtof(p, &end2);
+        if (end2 == p) break;
+        p = end2;
+        if (*p != ',') break;
+        ++p;
+
+        // age
+        char* end3 = nullptr;
+        const float age01 = std::strtof(p, &end3);
+        if (end3 == p) break;
+        p = end3;
+
+        activeGrains[activeCount].start01 = fclampf(start01, 0.0f, 1.0f);
+        activeGrains[activeCount].end01 = fclampf(end01, 0.0f, 1.0f);
+        activeGrains[activeCount].age01 = fclampf(age01, 0.0f, 1.0f);
+        ++activeCount;
+
+        // delimiter ; or end
+        while (*p == ' ' || *p == '\t') ++p;
+        if (*p == ';') { ++p; while (*p == ' ' || *p == '\t') ++p; continue; }
+        if (*p == '\0') break;
+        // unexpected separator
+        break;
+    }
+}
+
 void GristUI::rebuildWavePeaks()
 {
     waveMin.clear();
@@ -214,6 +259,13 @@ void GristUI::stateChanged(const char* key, const char* value)
     if (std::strcmp(key, "grains") == 0)
     {
         parseGrainViz(value);
+        repaint();
+        return;
+    }
+
+    if (std::strcmp(key, "grains_active") == 0)
+    {
+        parseActiveGrainViz(value);
         repaint();
         return;
     }
@@ -437,7 +489,33 @@ void GristUI::onNanoDisplay()
         }
     }
 
-    // grains (vertical markers)
+    // active grains (rectangles spanning source region)
+    if (activeCount > 0)
+    {
+        const float innerX = waveX + 8.0f;
+        const float innerW = waveW - 16.0f;
+        const float top = waveY + 10.0f;
+        const float bottom = waveY + waveH - 10.0f;
+
+        for (uint32_t g = 0; g < activeCount; ++g)
+        {
+            float a = 1.0f - activeGrains[g].age01;
+            a = fclampf(a, 0.0f, 1.0f);
+            const float alpha = 0.10f + 0.30f * a;
+
+            float x0 = innerX + activeGrains[g].start01 * innerW;
+            float x1 = innerX + activeGrains[g].end01 * innerW;
+            if (x1 < x0) std::swap(x0, x1);
+            if (x1 - x0 < 2.0f) x1 = x0 + 2.0f;
+
+            beginPath();
+            rect(x0, top, x1 - x0, bottom - top);
+            fillColor(0.95f, 0.85f, 0.35f, alpha);
+            fill();
+        }
+    }
+
+    // spawn markers (vertical lines)
     if (grainCount > 0)
     {
         const float innerX = waveX + 8.0f;
@@ -448,7 +526,7 @@ void GristUI::onNanoDisplay()
             beginPath();
             moveTo(x, waveY + 8.0f);
             lineTo(x, waveY + waveH - 8.0f);
-            strokeColor(0.95f, 0.85f, 0.35f, 0.55f);
+            strokeColor(0.95f, 0.85f, 0.35f, 0.65f);
             strokeWidth(2.0f);
             stroke();
         }

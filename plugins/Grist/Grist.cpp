@@ -38,7 +38,7 @@ static inline float catmullRom(const float y0, const float y1, const float y2, c
 }
 
 Grist::Grist()
-    : Plugin(kParamCount, 0, 4), // params, programs, states
+    : Plugin(kParamCount, 0, 5), // params, programs, states
       fGain(0.8f),
       fGrainSizeMs(60.0f),
       fDensity(20.0f),
@@ -156,7 +156,14 @@ void Grist::initState(uint32_t index, State& state)
         state.key = "grains";
         state.defaultValue = "";
         state.hints = 0;
-        state.label = "Grain Viz";
+        state.label = "Grain Spawn Viz";
+    }
+    else if (index == 4)
+    {
+        state.key = "grains_active";
+        state.defaultValue = "";
+        state.hints = 0;
+        state.label = "Grain Active Viz";
     }
 }
 
@@ -166,7 +173,7 @@ void Grist::setState(const char* key, const char* value)
         return;
 
     // Output-only states (we still accept them from host silently).
-    if (std::strcmp(key, "sample_status") == 0 || std::strcmp(key, "sample_error") == 0 || std::strcmp(key, "grains") == 0)
+    if (std::strcmp(key, "sample_status") == 0 || std::strcmp(key, "sample_error") == 0 || std::strcmp(key, "grains") == 0 || std::strcmp(key, "grains_active") == 0)
         return;
 
     if (std::strcmp(key, "sample") != 0)
@@ -701,6 +708,7 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
                         Grain& g = voice.grains[(uint32_t)slot];
                         g.active = true;
                         g.pos = start;
+                        g.startPos = start;
                         g.inc = baseInc * randPitchMul;
                         g.age = 0;
                         g.dur = grainDur;
@@ -777,13 +785,15 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
         outR[i] = mixR;
     }
 
-    // Publish grain spawn positions to UI at ~30 Hz (best-effort).
-    // Format: comma-separated list of 0..1 floats.
+    // Publish grain viz to UI at ~30 Hz (best-effort).
+    // - grains: comma-separated list of 0..1 floats (spawn markers)
+    // - grains_active: semicolon-separated list of "start,end,age" triples (all 0..1)
     vizDecim += frames;
     const uint32_t vizInterval = (uint32_t)std::max(1.0, fSampleRate / 30.0);
     if (vizDecim >= vizInterval)
     {
         vizDecim = 0;
+
         if (vizEventCount > 0)
         {
             char buf[1024];
@@ -798,6 +808,47 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
             buf[pos] = '\0';
             updateStateValue("grains", buf);
             vizEventCount = 0;
+        }
+
+        // active grains snapshot
+        char abuf[1536];
+        uint32_t apos = 0;
+        uint32_t count = 0;
+        constexpr uint32_t kMaxActiveSend = 64;
+
+        for (uint32_t v = 0; v < kMaxVoices && count < kMaxActiveSend; ++v)
+        {
+            const Voice& voice = voices[v];
+            if (!voice.active) continue;
+
+            for (uint32_t gi = 0; gi < Voice::kMaxGrains && count < kMaxActiveSend; ++gi)
+            {
+                const Grain& g = voice.grains[gi];
+                if (!g.active) continue;
+
+                const double start = g.startPos;
+                const double span = g.inc * (double)g.dur;
+                const double end = start + span;
+
+                const float start01 = (float)fclampf((float)(start / (double)(len - 1)), 0.0f, 1.0f);
+                const float end01 = (float)fclampf((float)(end / (double)(len - 1)), 0.0f, 1.0f);
+                const float age01 = (g.dur > 0) ? fclampf((float)g.age / (float)g.dur, 0.0f, 1.0f) : 1.0f;
+
+                const int n = std::snprintf(abuf + apos, sizeof(abuf) - apos,
+                                           (count == 0) ? "%.4f,%.4f,%.4f" : ";%.4f,%.4f,%.4f",
+                                           start01, end01, age01);
+                if (n <= 0) { apos = 0; break; }
+                apos += (uint32_t)n;
+                if (apos + 24 >= sizeof(abuf)) { apos = 0; break; }
+
+                ++count;
+            }
+        }
+
+        if (apos > 0)
+        {
+            abuf[std::min<uint32_t>(apos, (uint32_t)sizeof(abuf) - 1)] = '\0';
+            updateStateValue("grains_active", abuf);
         }
     }
 }

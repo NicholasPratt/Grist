@@ -79,11 +79,12 @@ private:
     // Grain engine (simple first pass)
     struct Grain {
         bool active = false;
-        double pos = 0.0;     // sample index (fractional)
-        double inc = 1.0;     // playback increment per output sample
-        uint32_t age = 0;     // samples rendered
-        uint32_t dur = 0;     // duration in samples
-        float panL = 1.0f;    // simple per-grain pan gains
+        double pos = 0.0;        // current sample index (fractional)
+        double startPos = 0.0;   // start sample index (fractional)
+        double inc = 1.0;        // playback increment per output sample
+        uint32_t age = 0;        // samples rendered
+        uint32_t dur = 0;        // duration in output samples
+        float panL = 1.0f;       // simple per-grain pan gains
         float panR = 1.0f;
     };
 

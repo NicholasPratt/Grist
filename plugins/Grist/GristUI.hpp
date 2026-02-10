@@ -68,9 +68,20 @@ private:
     float grainPos[kMaxVizGrains];
     uint32_t grainCount = 0;
 
+    struct ActiveGrain {
+        float start01 = 0.0f;
+        float end01 = 0.0f;
+        float age01 = 0.0f; // 0 new -> 1 old
+    };
+
+    static constexpr uint32_t kMaxActiveViz = 64;
+    ActiveGrain activeGrains[kMaxActiveViz];
+    uint32_t activeCount = 0;
+
     void layoutWaveArea();
     void rebuildWavePeaks();
     void parseGrainViz(const char* value);
+    void parseActiveGrainViz(const char* value);
 
     DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(GristUI)
 };
