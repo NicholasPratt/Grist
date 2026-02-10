@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cstring>
 #include <cstdlib>
+#include <cstdio>
 
 START_NAMESPACE_DISTRHO
 
@@ -28,8 +29,16 @@ static inline float lerp(const float a, const float b, const float t)
     return a + (b - a) * t;
 }
 
+static inline float catmullRom(const float y0, const float y1, const float y2, const float y3, const float t)
+{
+    // Catmull-Rom spline (cubic), reasonably good for sample playback
+    const float t2 = t * t;
+    const float t3 = t2 * t;
+    return 0.5f * ((2.0f * y1) + (-y0 + y2) * t + (2.0f*y0 - 5.0f*y1 + 4.0f*y2 - y3) * t2 + (-y0 + 3.0f*y1 - 3.0f*y2 + y3) * t3);
+}
+
 Grist::Grist()
-    : Plugin(kParamCount, 0, 3), // params, programs, states
+    : Plugin(kParamCount, 0, 4), // params, programs, states
       fGain(0.8f),
       fGrainSizeMs(60.0f),
       fDensity(20.0f),
@@ -48,6 +57,9 @@ Grist::Grist()
       currentNote(60),
       currentVelocity(0.8f)
 {
+    vizEventCount = 0;
+    vizDecim = 0;
+
     // voices init
     for (uint32_t v = 0; v < kMaxVoices; ++v)
     {
@@ -139,6 +151,13 @@ void Grist::initState(uint32_t index, State& state)
         state.hints = 0;
         state.label = "Sample Error";
     }
+    else if (index == 3)
+    {
+        state.key = "grains";
+        state.defaultValue = "";
+        state.hints = 0;
+        state.label = "Grain Viz";
+    }
 }
 
 void Grist::setState(const char* key, const char* value)
@@ -147,7 +166,7 @@ void Grist::setState(const char* key, const char* value)
         return;
 
     // Output-only states (we still accept them from host silently).
-    if (std::strcmp(key, "sample_status") == 0 || std::strcmp(key, "sample_error") == 0)
+    if (std::strcmp(key, "sample_status") == 0 || std::strcmp(key, "sample_error") == 0 || std::strcmp(key, "grains") == 0)
         return;
 
     if (std::strcmp(key, "sample") != 0)
@@ -170,6 +189,13 @@ void Grist::setState(const char* key, const char* value)
 
     if (ok)
     {
+        // Push the resolved path back into the state so the UI (and host) have the real filename
+        // even when the UI requests "__DEFAULT__".
+        {
+            std::lock_guard<std::mutex> lock(sampleMutex);
+            if (sample)
+                updateStateValue("sample", sample->path.c_str());
+        }
         updateStateValue("sample_status", "ok");
         updateStateValue("sample_error", "");
     }
@@ -678,6 +704,16 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
                         g.inc = baseInc * randPitchMul;
                         g.age = 0;
                         g.dur = grainDur;
+
+                        // simple stereo spread tied to spray (0..1)
+                        const float pan = (rngFloat01() * 2.0f - 1.0f) * spray; // -spray..spray
+                        const float ang = (pan * 0.5f + 0.5f) * 1.57079632679f; // 0..pi/2
+                        g.panL = std::cos(ang);
+                        g.panR = std::sin(ang);
+
+                        // viz: record normalized start position (best-effort)
+                        if (vizEventCount < kVizMaxEvents)
+                            vizEvents[vizEventCount++] = pos01;
                     }
 
                     voice.samplesToNextGrain += samplesPerGrain;
@@ -709,14 +745,24 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
                 }
 
                 const float frac = (float)(g.pos - (double)idx);
-                const float l = lerp(s->L[idx], s->L[idx + 1], frac);
-                const float r = lerp(s->R[idx], s->R[idx + 1], frac);
+
+                // cubic interpolation (Catmull-Rom)
+                const size_t i0 = (idx > 0) ? (idx - 1) : idx;
+                const size_t i1 = idx;
+                const size_t i2 = (idx + 1 < len) ? (idx + 1) : idx;
+                const size_t i3 = (idx + 2 < len) ? (idx + 2) : i2;
+
+                const float l = catmullRom(s->L[i0], s->L[i1], s->L[i2], s->L[i3], frac);
+                const float r = catmullRom(s->R[i0], s->R[i1], s->R[i2], s->R[i3], frac);
 
                 const double phase = (g.dur > 1) ? ((double)g.age / (double)(g.dur - 1)) : 1.0;
                 const float w = (float)(0.5 - 0.5 * std::cos(twoPi * phase));
 
-                accL += l * w;
-                accR += r * w;
+                // size normalization: keep energy roughly stable as grain size changes
+                const float norm = 1.0f / std::sqrt(std::max(1.0f, (float)g.dur));
+
+                accL += l * w * norm * g.panL;
+                accR += r * w * norm * g.panR;
 
                 g.pos += g.inc;
                 g.age += 1;
@@ -729,6 +775,30 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
 
         outL[i] = mixL;
         outR[i] = mixR;
+    }
+
+    // Publish grain spawn positions to UI at ~30 Hz (best-effort).
+    // Format: comma-separated list of 0..1 floats.
+    vizDecim += frames;
+    const uint32_t vizInterval = (uint32_t)std::max(1.0, fSampleRate / 30.0);
+    if (vizDecim >= vizInterval)
+    {
+        vizDecim = 0;
+        if (vizEventCount > 0)
+        {
+            char buf[1024];
+            uint32_t pos = 0;
+            for (uint32_t ei = 0; ei < vizEventCount && pos + 16 < sizeof(buf); ++ei)
+            {
+                const int n = std::snprintf(buf + pos, sizeof(buf) - pos, (ei == 0) ? "%.4f" : ",%.4f", vizEvents[ei]);
+                if (n <= 0) break;
+                pos += (uint32_t)n;
+                if (pos >= sizeof(buf)) { pos = (uint32_t)sizeof(buf) - 1; break; }
+            }
+            buf[pos] = '\0';
+            updateStateValue("grains", buf);
+            vizEventCount = 0;
+        }
     }
 }
 

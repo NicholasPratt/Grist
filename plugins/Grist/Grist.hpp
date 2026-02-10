@@ -83,6 +83,8 @@ private:
         double inc = 1.0;     // playback increment per output sample
         uint32_t age = 0;     // samples rendered
         uint32_t dur = 0;     // duration in samples
+        float panL = 1.0f;    // simple per-grain pan gains
+        float panR = 1.0f;
     };
 
     // Polyphonic voices
@@ -152,6 +154,14 @@ private:
     NoteQueue noteQueues[128];
 
     uint32_t rngState = 0x12345678u;
+
+    // --- UI visualization (throttled, best-effort) ---
+    // We push normalized grain start positions (0..1) whenever a grain spawns,
+    // and occasionally publish them via an output-only state for the UI.
+    static constexpr uint32_t kVizMaxEvents = 64;
+    float vizEvents[kVizMaxEvents];
+    uint32_t vizEventCount = 0;
+    uint32_t vizDecim = 0;
 
     double midiNoteToHz(int note) const;
     bool loadWavFile(const char* path);

@@ -8,6 +8,9 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
+
+#include "DSP/dr_wav.h"
 
 static inline float fclampf(const float v, const float lo, const float hi)
 {
@@ -29,7 +32,12 @@ GristUI::GristUI()
     btnH = btn2H;
     std::snprintf(sampleLabel, sizeof(sampleLabel), "Sample path: ~/Documents/samples/grist.wav");
     loadSharedResources();
+    layoutWaveArea();
     initSliders();
+
+    for (uint32_t i = 0; i < kMaxVizGrains; ++i)
+        grainPos[i] = 0.0f;
+    grainCount = 0;
 }
 
 void GristUI::initSliders()
@@ -37,8 +45,10 @@ void GristUI::initSliders()
     const float margin = 18.0f;
     const float gap = 10.0f;
     const float sliderW = (getWidth() - margin*2 - gap*(kNumSliders-1)) / (float)kNumSliders;
-    const float sliderH = getHeight() - 92.0f;
-    const float y = 64.0f;
+
+    // leave room for waveform/grain viz
+    const float y = waveY + waveH + 16.0f;
+    const float sliderH = getHeight() - y - 18.0f;
 
     const struct { uint32_t p; float minV; float maxV; const char* label; const char* unit; bool bipolar; } defs[kNumSliders] = {
         { kParamGain, 0.0f, 1.0f, "Gain", "", false },
@@ -71,6 +81,96 @@ void GristUI::initSliders()
     }
 }
 
+void GristUI::layoutWaveArea()
+{
+    waveX = 18.0f;
+    waveY = 72.0f;
+    waveW = std::max(10.0f, getWidth() - 36.0f);
+    waveH = 110.0f;
+}
+
+void GristUI::parseGrainViz(const char* value)
+{
+    grainCount = 0;
+    if (value == nullptr || value[0] == '\0')
+        return;
+
+    const char* p = value;
+    while (*p != '\0' && grainCount < kMaxVizGrains)
+    {
+        char* end = nullptr;
+        const float v = std::strtof(p, &end);
+        if (end == p)
+            break;
+        grainPos[grainCount++] = fclampf(v, 0.0f, 1.0f);
+        p = end;
+        while (*p == ',' || *p == ' ' || *p == '\t') ++p;
+    }
+}
+
+void GristUI::rebuildWavePeaks()
+{
+    waveMin.clear();
+    waveMax.clear();
+
+    if (samplePath.empty() || waveW < 4.0f)
+        return;
+
+    drwav wav;
+    if (!drwav_init_file(&wav, samplePath.c_str(), nullptr))
+        return;
+
+    const uint32_t ch = wav.channels;
+    const uint64_t frames = wav.totalPCMFrameCount;
+    if (frames < 2 || ch < 1)
+    {
+        drwav_uninit(&wav);
+        return;
+    }
+
+    const uint32_t cols = (uint32_t)std::max(8.0f, std::floor(waveW));
+    waveMin.assign(cols, 0.0f);
+    waveMax.assign(cols, 0.0f);
+
+    // Read in chunks to avoid huge allocations
+    const uint32_t chunkFrames = 4096;
+    std::vector<float> buf;
+    buf.resize((size_t)chunkFrames * ch);
+
+    uint64_t frameIndex = 0;
+    while (frameIndex < frames)
+    {
+        const uint64_t toRead = std::min<uint64_t>(chunkFrames, frames - frameIndex);
+        const uint64_t got = drwav_read_pcm_frames_f32(&wav, toRead, buf.data());
+        if (got == 0)
+            break;
+
+        for (uint64_t i = 0; i < got; ++i)
+        {
+            float s = buf[(size_t)i * ch];
+            if (ch > 1)
+                s = 0.5f * (s + buf[(size_t)i * ch + 1]);
+
+            const uint64_t global = frameIndex + i;
+            const uint32_t col = (uint32_t)std::min<uint64_t>(cols - 1, (global * cols) / frames);
+            if (global == 0)
+            {
+                waveMin[col] = s;
+                waveMax[col] = s;
+            }
+            else
+            {
+                waveMin[col] = std::min(waveMin[col], s);
+                waveMax[col] = std::max(waveMax[col], s);
+            }
+        }
+
+        frameIndex += got;
+    }
+
+    drwav_uninit(&wav);
+}
+
 void GristUI::parameterChanged(uint32_t index, float value)
 {
     for (uint32_t i = 0; i < kNumSliders; ++i)
@@ -94,14 +194,26 @@ void GristUI::stateChanged(const char* key, const char* value)
     {
         if (value && value[0] != '\0')
         {
+            samplePath = value;
             const char* lastSlash = std::strrchr(value, '/');
             const char* name = lastSlash ? (lastSlash + 1) : value;
             std::snprintf(sampleLabel, sizeof(sampleLabel), "Sample: %s", name);
+            rebuildWavePeaks();
         }
         else
         {
+            samplePath.clear();
+            waveMin.clear();
+            waveMax.clear();
             std::snprintf(sampleLabel, sizeof(sampleLabel), "No sample loaded");
         }
+        repaint();
+        return;
+    }
+
+    if (std::strcmp(key, "grains") == 0)
+    {
+        parseGrainViz(value);
         repaint();
         return;
     }
@@ -284,6 +396,63 @@ void GristUI::onNanoDisplay()
     fillColor(0.75f, 0.75f, 0.75f);
     textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
     text(18.0f, 52.0f, sampleLabel, nullptr);
+
+    // Waveform + grain viz
+    beginPath();
+    roundedRect(waveX, waveY, waveW, waveH, 8.0f);
+    fillColor(0.10f, 0.10f, 0.11f);
+    fill();
+    strokeColor(0.22f, 0.22f, 0.25f);
+    strokeWidth(1.0f);
+    stroke();
+
+    // zero line
+    const float midY = waveY + waveH * 0.5f;
+    beginPath();
+    moveTo(waveX + 8.0f, midY);
+    lineTo(waveX + waveW - 8.0f, midY);
+    strokeColor(0.18f, 0.18f, 0.2f);
+    strokeWidth(1.0f);
+    stroke();
+
+    // waveform peaks
+    if (!waveMin.empty() && waveMin.size() == waveMax.size())
+    {
+        const uint32_t cols = (uint32_t)waveMin.size();
+        const float innerX = waveX + 8.0f;
+        const float innerW = waveW - 16.0f;
+        const float sx = innerW / (float)cols;
+
+        for (uint32_t c = 0; c < cols; ++c)
+        {
+            const float x = innerX + (float)c * sx;
+            const float y0 = midY - waveMax[c] * (waveH * 0.45f);
+            const float y1 = midY - waveMin[c] * (waveH * 0.45f);
+            beginPath();
+            moveTo(x, y0);
+            lineTo(x, y1);
+            strokeColor(0.55f, 0.55f, 0.58f, 0.9f);
+            strokeWidth(1.0f);
+            stroke();
+        }
+    }
+
+    // grains (vertical markers)
+    if (grainCount > 0)
+    {
+        const float innerX = waveX + 8.0f;
+        const float innerW = waveW - 16.0f;
+        for (uint32_t g = 0; g < grainCount; ++g)
+        {
+            const float x = innerX + grainPos[g] * innerW;
+            beginPath();
+            moveTo(x, waveY + 8.0f);
+            lineTo(x, waveY + waveH - 8.0f);
+            strokeColor(0.95f, 0.85f, 0.35f, 0.55f);
+            strokeWidth(2.0f);
+            stroke();
+        }
+    }
 
     for (uint32_t i = 0; i < kNumSliders; ++i)
     {
