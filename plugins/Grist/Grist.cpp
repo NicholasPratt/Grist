@@ -223,9 +223,11 @@ void Grist::initParameter(uint32_t index, Parameter& parameter)
     case kParamGain:
         parameter.name = "Gain";
         parameter.symbol = "gain";
-        parameter.ranges.def = 0.8f;
+        // Allow boosting above unity to make the instrument feel less quiet.
+        // Note: values > 1.0 can clip depending on host levels.
+        parameter.ranges.def = 1.0f;
         parameter.ranges.min = 0.0f;
-        parameter.ranges.max = 1.0f;
+        parameter.ranges.max = 2.0f;
         break;
 
     case kParamGrainSizeMs:
@@ -364,7 +366,7 @@ void Grist::setParameterValue(uint32_t index, float value)
     switch (index)
     {
     case kParamGain:
-        fGain = fclampf(value, 0.0f, 1.0f);
+        fGain = fclampf(value, 0.0f, 2.0f);
         break;
     case kParamGrainSizeMs:
         fGrainSizeMs = fclampf(value, 5.0f, 250.0f);

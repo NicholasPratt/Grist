@@ -52,7 +52,7 @@ void GristUI::initSliders()
     const float sliderH = getHeight() - y - 18.0f;
 
     const struct { uint32_t p; float minV; float maxV; const char* label; const char* unit; bool bipolar; } defs[kNumSliders] = {
-        { kParamGain, 0.0f, 1.0f, "Gain", "", false },
+        { kParamGain, 0.0f, 2.0f, "Gain", "", false },
         { kParamGrainSizeMs, 5.0f, 250.0f, "Size", "ms", false },
         { kParamDensity, 1.0f, 80.0f, "Dens", "gr/s", false },
         { kParamPosition, 0.0f, 100.0f, "Pos", "%", false },
