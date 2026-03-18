@@ -30,6 +30,36 @@ static inline float lerp(const float a, const float b, const float t)
 START_NAMESPACE_DISTRHO
 
 // ---------------------------
+// Theme (quick style pass)
+// ---------------------------
+
+struct Theme {
+    // base
+    float bg0[3] = {0.06f, 0.06f, 0.065f};
+    float bg1[3] = {0.09f, 0.09f, 0.095f};
+
+    // panels
+    float panel[3]     = {0.10f, 0.10f, 0.11f};
+    float panel2[3]    = {0.13f, 0.13f, 0.14f};
+    float bezel[3]     = {0.04f, 0.04f, 0.045f};
+    float stroke[3]    = {0.22f, 0.22f, 0.25f};
+    float strokeHi[3]  = {0.32f, 0.32f, 0.36f};
+
+    // text
+    float text[3]      = {0.92f, 0.92f, 0.92f};
+    float textMuted[3] = {0.72f, 0.72f, 0.72f};
+
+    // accents
+    float accent[3]    = {0.95f, 0.85f, 0.35f};
+    float accentHi[3]  = {0.98f, 0.92f, 0.55f};
+
+    // negative accent (for mod amount)
+    float neg[3]       = {0.25f, 0.72f, 0.95f};
+};
+
+static const Theme T;
+
+// ---------------------------
 // Construction + layout
 // ---------------------------
 
@@ -234,22 +264,22 @@ void GristUI::drawModSlotsForParam(uint32_t param, float x, float y)
 
         const ModSlot& sl = mod[(uint32_t)tgt][si];
         if (sl.src == ModSource::None)
-            fillColor(0.13f, 0.13f, 0.14f);
+            fillColor(T.panel[0], T.panel[1], T.panel[2]);
         else
         {
             const float a = fclampf(std::fabs(sl.amt), 0.0f, 1.0f);
             if (sl.amt >= 0.0f)
-                fillColor(0.25f + 0.35f*a, 0.20f + 0.25f*a, 0.10f);
+                fillColor(lerp(T.panel2[0], T.accent[0], a*0.85f), lerp(T.panel2[1], T.accent[1], a*0.85f), lerp(T.panel2[2], T.accent[2], a*0.85f));
             else
-                fillColor(0.10f, 0.22f + 0.35f*a, 0.32f + 0.20f*a);
+                fillColor(lerp(T.panel2[0], T.neg[0], a*0.85f), lerp(T.panel2[1], T.neg[1], a*0.85f), lerp(T.panel2[2], T.neg[2], a*0.85f));
         }
         fill();
-        strokeColor(0.28f, 0.28f, 0.30f);
+        strokeColor(T.stroke[0], T.stroke[1], T.stroke[2]);
         strokeWidth(1.0f);
         stroke();
 
         fontSize(8.5f);
-        fillColor(0.92f, 0.92f, 0.92f);
+        fillColor(T.text[0], T.text[1], T.text[2]);
         textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
         text(bx + bs*0.5f, by + bs*0.5f + 0.2f, modSourceLabel(sl.src), nullptr);
     }
@@ -590,33 +620,52 @@ bool GristUI::onMotion(const MotionEvent& ev)
 void GristUI::drawTabButton(float x, float y, float w, float h, const char* label, bool on)
 {
     beginPath();
-    roundedRect(x, y, w, h, 8.0f);
-    if (on) fillColor(0.22f, 0.20f, 0.14f);
-    else    fillColor(0.14f, 0.14f, 0.15f);
+    roundedRect(x, y, w, h, 10.0f);
+    if (on) fillColor(T.panel2[0], T.panel2[1], T.panel2[2]);
+    else    fillColor(T.panel[0], T.panel[1], T.panel[2]);
     fill();
-    strokeColor(0.35f, 0.33f, 0.26f);
+
+    // top highlight
+    beginPath();
+    roundedRect(x + 1.0f, y + 1.0f, w - 2.0f, h*0.55f, 9.0f);
+    fillColor(1.0f, 1.0f, 1.0f, on ? 0.06f : 0.04f);
+    fill();
+
+    strokeColor(on ? T.strokeHi[0] : T.stroke[0], on ? T.strokeHi[1] : T.stroke[1], on ? T.strokeHi[2] : T.stroke[2]);
     strokeWidth(1.0f);
     stroke();
 
     fontSize(12.0f);
-    fillColor(on ? 0.95f : 0.80f, on ? 0.88f : 0.80f, on ? 0.45f : 0.80f);
+    fillColor(on ? T.accent[0] : T.textMuted[0], on ? T.accent[1] : T.textMuted[1], on ? T.accent[2] : T.textMuted[2]);
     textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
     text(x + w*0.5f, y + h*0.5f + 0.5f, label, nullptr);
 }
 
 void GristUI::drawKnob(const Knob& k, bool active)
 {
-    // knob body
+    // knob body (bezel + face)
     beginPath();
-    circle(k.x, k.y, k.r + 10.0f);
-    fillColor(0.10f, 0.10f, 0.11f);
+    circle(k.x, k.y, k.r + 12.0f);
+    fillColor(T.bezel[0], T.bezel[1], T.bezel[2]);
     fill();
 
     beginPath();
-    circle(k.x, k.y, k.r + 8.0f);
-    fillColor(0.16f, 0.16f, 0.17f);
+    circle(k.x, k.y, k.r + 9.0f);
+    fillColor(T.panel[0], T.panel[1], T.panel[2]);
     fill();
-    strokeColor(0.28f, 0.28f, 0.30f);
+
+    // face gradient
+    beginPath();
+    circle(k.x, k.y, k.r + 7.0f);
+    {
+        const Paint pg = radialGradient(k.x - k.r*0.25f, k.y - k.r*0.35f, k.r*0.6f, k.r*1.8f,
+                                       Color(1.0f, 1.0f, 1.0f, 0.09f),
+                                       Color(0.0f, 0.0f, 0.0f, 0.10f));
+        fillPaint(pg);
+    }
+    fill();
+
+    strokeColor(active ? T.strokeHi[0] : T.stroke[0], active ? T.strokeHi[1] : T.stroke[1], active ? T.strokeHi[2] : T.stroke[2]);
     strokeWidth(active ? 2.0f : 1.0f);
     stroke();
 
@@ -628,27 +677,27 @@ void GristUI::drawKnob(const Knob& k, bool active)
 
     beginPath();
     arc(k.x, k.y, k.r + 2.0f, a0, a1, CCW);
-    strokeColor(0.20f, 0.20f, 0.21f);
-    strokeWidth(6.0f);
+    strokeColor(0.18f, 0.18f, 0.19f);
+    strokeWidth(7.0f);
     stroke();
 
     beginPath();
     arc(k.x, k.y, k.r + 2.0f, a0, aa, CCW);
-    strokeColor(0.95f, 0.85f, 0.35f);
-    strokeWidth(6.0f);
+    strokeColor(T.accent[0], T.accent[1], T.accent[2]);
+    strokeWidth(7.0f);
     stroke();
 
     // indicator
     const float ix = k.x + std::cos(aa) * (k.r - 4.0f);
     const float iy = k.y + std::sin(aa) * (k.r - 4.0f);
     beginPath();
-    circle(ix, iy, 4.0f);
-    fillColor(0.98f, 0.95f, 0.75f);
+    circle(ix, iy, 4.2f);
+    fillColor(T.accentHi[0], T.accentHi[1], T.accentHi[2]);
     fill();
 
     // label + value
     fontSize(11.5f);
-    fillColor(0.92f, 0.92f, 0.92f);
+    fillColor(T.text[0], T.text[1], T.text[2]);
     textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
     text(k.x, k.y + k.r + 20.0f, k.label, nullptr);
 
@@ -659,7 +708,7 @@ void GristUI::drawKnob(const Knob& k, bool active)
         std::snprintf(buf, sizeof(buf), "%.2f", k.value);
 
     fontSize(10.5f);
-    fillColor(0.75f, 0.75f, 0.75f);
+    fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
     text(k.x, k.y + k.r + 34.0f, buf, nullptr);
 }
 
@@ -668,50 +717,60 @@ void GristUI::onNanoDisplay()
     const float W = getWidth();
     const float H = getHeight();
 
-    // background
+    // background (subtle vertical gradient)
     beginPath();
     rect(0, 0, W, H);
-    fillColor(0.07f, 0.07f, 0.075f);
+    {
+        const Paint bg = linearGradient(0.0f, 0.0f, 0.0f, H,
+                                       Color(T.bg1[0], T.bg1[1], T.bg1[2], 1.0f),
+                                       Color(T.bg0[0], T.bg0[1], T.bg0[2], 1.0f));
+        fillPaint(bg);
+    }
     fill();
 
-    // title
+    // title block
     fontSize(20.0f);
-    fillColor(0.95f, 0.85f, 0.35f);
+    fillColor(T.accent[0], T.accent[1], T.accent[2]);
     textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
     text(18.0f, 46.0f, "GRIST", nullptr);
+
+    fontSize(11.0f);
+    fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
+    text(88.0f, 46.0f, "granular synth", nullptr);
 
     // tabs
     drawTabButton(tabX, tabY, tabW, tabH, "PERFORM", tab == Tab::Perform);
     drawTabButton(tabX + tabW, tabY, tabW, tabH, "XY", tab == Tab::XY);
 
     // buttons
-    beginPath();
-    roundedRect(btn2X, btn2Y, btn2W, btn2H, 8.0f);
-    fillColor(0.16f, 0.16f, 0.17f);
-    fill();
-    strokeColor(0.30f, 0.30f, 0.32f);
-    strokeWidth(1.0f);
-    stroke();
-    fontSize(12.0f);
-    fillColor(0.90f, 0.90f, 0.90f);
-    textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
-    text(btn2X + btn2W*0.5f, btn2Y + btn2H*0.5f, "Load sample…", nullptr);
+    auto drawButton = [&](float x, float y, float w, float h, const char* label) {
+        beginPath();
+        roundedRect(x, y, w, h, 10.0f);
+        fillColor(T.panel2[0], T.panel2[1], T.panel2[2]);
+        fill();
 
-    beginPath();
-    roundedRect(btnX, btnY, btnW, btnH, 8.0f);
-    fillColor(0.16f, 0.16f, 0.17f);
-    fill();
-    strokeColor(0.30f, 0.30f, 0.32f);
-    strokeWidth(1.0f);
-    stroke();
-    fontSize(12.0f);
-    fillColor(0.90f, 0.90f, 0.90f);
-    textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
-    text(btnX + btnW*0.5f, btnY + btnH*0.5f, "Reload default", nullptr);
+        // top highlight
+        beginPath();
+        roundedRect(x + 1.0f, y + 1.0f, w - 2.0f, h*0.55f, 9.0f);
+        fillColor(1.0f, 1.0f, 1.0f, 0.05f);
+        fill();
+
+        strokeColor(T.strokeHi[0], T.strokeHi[1], T.strokeHi[2]);
+        strokeWidth(1.0f);
+        stroke();
+
+        fontSize(12.0f);
+        fillColor(T.text[0], T.text[1], T.text[2]);
+        textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
+        text(x + w*0.5f, y + h*0.5f, label, nullptr);
+    };
+
+    drawButton(btn2X, btn2Y, btn2W, btn2H, "Load sample…");
+    drawButton(btnX, btnY, btnW, btnH, "Reload default");
 
     // sample label
     fontSize(11.0f);
-    fillColor(0.72f, 0.72f, 0.72f);
+    fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
     textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
     text(18.0f, 58.0f, sampleLabel, nullptr);
 
