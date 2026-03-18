@@ -65,6 +65,9 @@ private:
 
     enum class ModTarget : uint8_t {
         Position = 0,
+        GrainSize,
+        Density,
+        Spray,
         Pitch,
         COUNT
     };

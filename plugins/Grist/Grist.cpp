@@ -813,11 +813,8 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
     }
 
     // --- shared grain constants ---
-    const double grainDurSec = (double)fGrainSizeMs / 1000.0;
-    const uint32_t grainDur = (uint32_t)std::max(8.0, grainDurSec * (double)s->sampleRate);
-
+    // Note: grain size + density can be modulated; the block-level constants are only base values.
     const double density = std::max(0.0, (double)fDensity);
-    const double samplesPerGrain = (density > 0.0) ? (fSampleRate / density) : 1e30;
 
     const uint32_t attackSamples = (uint32_t)std::max(1.0, ((double)fAttackMs / 1000.0) * fSampleRate);
     const float attackInc = (fAttackMs <= 0.0f) ? 1.0f : (1.0f / (float)attackSamples);
@@ -902,6 +899,41 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
                 voice.samplesToNextGrain -= 1.0;
                 while (voice.samplesToNextGrain <= 0.0)
                 {
+                    // modulation helpers (per voice, uses current LFO values)
+                    auto srcValue = [&](GristMod::Source src) -> float {
+                        switch (src)
+                        {
+                        default:
+                        case GristMod::Source::None: return 0.0f;
+                        case GristMod::Source::LFO1: return lfo1;
+                        case GristMod::Source::LFO2: return lfo2;
+                        case GristMod::Source::Env1: return voice.env * 2.0f - 1.0f;
+                        case GristMod::Source::Velocity: return voice.velocity * 2.0f - 1.0f;
+                        case GristMod::Source::Keytrack: return fclampf((float)(voice.note - 60) / 24.0f, -1.0f, 1.0f);
+                        case GristMod::Source::X: return fX;
+                        case GristMod::Source::Y: return fY;
+                        case GristMod::Source::Macro1: return fMacro[0];
+                        case GristMod::Source::Macro2: return fMacro[1];
+                        case GristMod::Source::Macro3: return fMacro[2];
+                        case GristMod::Source::Macro4: return fMacro[3];
+                        case GristMod::Source::Macro5: return fMacro[4];
+                        case GristMod::Source::Macro6: return fMacro[5];
+                        case GristMod::Source::Macro7: return fMacro[6];
+                        case GristMod::Source::Macro8: return fMacro[7];
+                        }
+                    };
+
+                    auto targetMod = [&](GristMod::Target tgt) -> float {
+                        float m = 0.0f;
+                        for (uint32_t si = 0; si < GristMod::kMaxSlotsPerTarget; ++si)
+                        {
+                            const auto& sl = modMatrix.slots[(uint32_t)tgt][si];
+                            if (sl.source == GristMod::Source::None || sl.amount == 0.0f) continue;
+                            m += srcValue(sl.source) * sl.amount;
+                        }
+                        return fclampf(m, -1.0f, 1.0f);
+                    };
+
                     // find slot
                     int slot = -1;
                     for (uint32_t gi = 0; gi < Voice::kMaxGrains; ++gi)
@@ -909,50 +941,27 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
 
                     if (slot >= 0)
                     {
-                        auto srcValue = [&](GristMod::Source src) -> float {
-                            switch (src)
-                            {
-                            default:
-                            case GristMod::Source::None: return 0.0f;
-                            case GristMod::Source::LFO1: return lfo1;
-                            case GristMod::Source::LFO2: return lfo2;
-                            case GristMod::Source::Env1: return voice.env * 2.0f - 1.0f;
-                            case GristMod::Source::Velocity: return voice.velocity * 2.0f - 1.0f;
-                            case GristMod::Source::Keytrack: return fclampf((float)(voice.note - 60) / 24.0f, -1.0f, 1.0f);
-                            case GristMod::Source::X: return fX;
-                            case GristMod::Source::Y: return fY;
-                            case GristMod::Source::Macro1: return fMacro[0];
-                            case GristMod::Source::Macro2: return fMacro[1];
-                            case GristMod::Source::Macro3: return fMacro[2];
-                            case GristMod::Source::Macro4: return fMacro[3];
-                            case GristMod::Source::Macro5: return fMacro[4];
-                            case GristMod::Source::Macro6: return fMacro[5];
-                            case GristMod::Source::Macro7: return fMacro[6];
-                            case GristMod::Source::Macro8: return fMacro[7];
-                            }
-                        };
 
-                        auto targetMod = [&](GristMod::Target tgt) -> float {
-                            float m = 0.0f;
-                            for (uint32_t si = 0; si < GristMod::kMaxSlotsPerTarget; ++si)
-                            {
-                                const auto& sl = modMatrix.slots[(uint32_t)tgt][si];
-                                if (sl.source == GristMod::Source::None || sl.amount == 0.0f) continue;
-                                m += srcValue(sl.source) * sl.amount;
-                            }
-                            return fclampf(m, -1.0f, 1.0f);
-                        };
-
-                        // Apply modulation (MVP): position + pitch. Ranges are intentionally conservative.
+                        // Apply modulation. Ranges are intentionally conservative.
                         float center = fPosition;
                         center += targetMod(GristMod::Target::Position) * 0.50f; // +/- 50% of position
                         center = fclampf(center, 0.0f, 1.0f);
 
-                        const float spray = fSpray;
+                        float spray = fSpray;
+                        spray += targetMod(GristMod::Target::Spray) * 0.50f; // +/- 50%
+                        spray = fclampf(spray, 0.0f, 1.0f);
 
                         float pitchSt = fPitch;
                         pitchSt += targetMod(GristMod::Target::Pitch) * 12.0f; // +/- 12 st
                         pitchSt = fclampf(pitchSt, -48.0f, 48.0f);
+
+                        // Grain size modulation affects per-grain duration
+                        float gSizeMs = fGrainSizeMs;
+                        gSizeMs += targetMod(GristMod::Target::GrainSizeMs) * 80.0f; // +/- 80 ms
+                        gSizeMs = fclampf(gSizeMs, 5.0f, 500.0f);
+
+                        const double gDurSec = (double)gSizeMs / 1000.0;
+                        const uint32_t gDur = (uint32_t)std::max(8.0, gDurSec * (double)s->sampleRate);
 
                         const float rr = rngFloat01() * 2.0f - 1.0f; // -1..1
                         const float pos01 = fclampf(center + rr * spray, 0.0f, 1.0f);
@@ -974,7 +983,7 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
                         g.startPos = start;
                         g.inc = baseInc * randPitchMul;
                         g.age = 0;
-                        g.dur = grainDur;
+                        g.dur = gDur;
 
                         // simple stereo spread tied to spray (0..1)
                         const float pan = (rngFloat01() * 2.0f - 1.0f) * spray; // -spray..spray
@@ -987,8 +996,14 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
                             vizEvents[vizEventCount++] = pos01;
                     }
 
-                    voice.samplesToNextGrain += samplesPerGrain;
-                    if (voice.samplesToNextGrain > samplesPerGrain)
+                    // Density modulation affects scheduling.
+                    float dens = fDensity;
+                    dens += targetMod(GristMod::Target::Density) * (0.75f * fDensity); // +/- 75%
+                    dens = fclampf(dens, 0.1f, 200.0f);
+                    const double spg = (dens > 0.0f) ? (fSampleRate / (double)dens) : 1e30;
+
+                    voice.samplesToNextGrain += spg;
+                    if (voice.samplesToNextGrain > spg)
                         break;
                 }
             }

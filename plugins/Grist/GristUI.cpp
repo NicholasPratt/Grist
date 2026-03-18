@@ -54,6 +54,8 @@ void GristUI::initModDefaults()
     mod[(uint32_t)ModTarget::Pitch][0].src = ModSource::LFO2;
     mod[(uint32_t)ModTarget::Pitch][0].amt = 0.10f;
 
+    // Suggested defaults (off) for other targets; left empty.
+
     // Push once so a fresh instance stays in sync with DSP (host may ignore until first interaction).
     pushModMatrixState();
 }
@@ -115,8 +117,11 @@ GristUI::ModSource GristUI::nextModSource(ModSource s) const
 
 bool GristUI::sliderToModTarget(uint32_t param, ModTarget& tgt) const
 {
-    if (param == kParamPosition) { tgt = ModTarget::Position; return true; }
-    if (param == kParamPitch)    { tgt = ModTarget::Pitch;    return true; }
+    if (param == kParamPosition)     { tgt = ModTarget::Position;  return true; }
+    if (param == kParamGrainSizeMs)   { tgt = ModTarget::GrainSize; return true; }
+    if (param == kParamDensity)       { tgt = ModTarget::Density;   return true; }
+    if (param == kParamSpray)         { tgt = ModTarget::Spray;     return true; }
+    if (param == kParamPitch)         { tgt = ModTarget::Pitch;     return true; }
     return false;
 }
 
@@ -174,8 +179,11 @@ void GristUI::pushModMatrixState()
         switch (t)
         {
         default:
-        case ModTarget::Position: return "pos";
-        case ModTarget::Pitch:    return "pitch";
+        case ModTarget::Position:  return "pos";
+        case ModTarget::GrainSize: return "size";
+        case ModTarget::Density:   return "dens";
+        case ModTarget::Spray:     return "spray";
+        case ModTarget::Pitch:     return "pitch";
         }
     };
 
@@ -210,6 +218,9 @@ void GristUI::parseModMatrixState(const char* value)
     auto parseTarget = [&](const char* id) -> int {
         if (!id) return -1;
         if (std::strcmp(id, "pos") == 0) return (int)ModTarget::Position;
+        if (std::strcmp(id, "size") == 0) return (int)ModTarget::GrainSize;
+        if (std::strcmp(id, "dens") == 0) return (int)ModTarget::Density;
+        if (std::strcmp(id, "spray") == 0) return (int)ModTarget::Spray;
         if (std::strcmp(id, "pitch") == 0) return (int)ModTarget::Pitch;
         return -1;
     };
