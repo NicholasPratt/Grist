@@ -15,6 +15,8 @@
 #include <string>
 #include <memory>
 
+#include "ModMatrix.hpp"
+
 START_NAMESPACE_DISTRHO
 
 class Grist : public Plugin {
@@ -59,6 +61,17 @@ private:
     float fReleaseMs;
     float fKillOnRetrig;        // 0/1 (DPF doesn't have bool params everywhere)
     float fNewVoiceOnRetrig;    // 0/1
+
+    // Modulation source parameters
+    float fLfo1RateHz;
+    float fLfo1Shape;
+    float fLfo2RateHz;
+    float fLfo2Shape;
+
+    float fX;
+    float fY;
+
+    float fMacro[8];
 
     // Runtime
     double fSampleRate;
@@ -155,6 +168,11 @@ private:
     NoteQueue noteQueues[128];
 
     uint32_t rngState = 0x12345678u;
+
+    // Modulation
+    GristMod::Matrix modMatrix;
+    float lfo1Phase = 0.0f;
+    float lfo2Phase = 0.0f;
 
     // --- UI visualization (throttled, best-effort) ---
     // We push normalized grain start positions (0..1) whenever a grain spawns,

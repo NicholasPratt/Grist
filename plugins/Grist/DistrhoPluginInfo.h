@@ -34,6 +34,7 @@
 #define DISTRHO_UI_FILE_BROWSER        1
 
 enum Parameters {
+    // --- synth controls ---
     kParamGain = 0,
     kParamGrainSizeMs,
     kParamDensity,
@@ -47,6 +48,27 @@ enum Parameters {
     kParamReleaseMs,
     kParamKillOnRetrig,
     kParamNewVoiceOnRetrig,
+
+    // --- modulation sources (automatable) ---
+    kParamLfo1RateHz,
+    kParamLfo1Shape,
+    kParamLfo2RateHz,
+    kParamLfo2Shape,
+
+    // XY performance pad (can be automated / MIDI-mapped)
+    kParamX,
+    kParamY,
+
+    // Macros (recommended for MIDI learn)
+    kParamMacro1,
+    kParamMacro2,
+    kParamMacro3,
+    kParamMacro4,
+    kParamMacro5,
+    kParamMacro6,
+    kParamMacro7,
+    kParamMacro8,
+
     kParamCount
 };
 

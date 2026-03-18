@@ -18,6 +18,8 @@
 #include <cstdlib>
 #include <cstdio>
 
+#include <string>
+
 START_NAMESPACE_DISTRHO
 
 static inline float fclampf(const float v, const float lo, const float hi)
@@ -39,7 +41,7 @@ static inline float catmullRom(const float y0, const float y1, const float y2, c
 }
 
 Grist::Grist()
-    : Plugin(kParamCount, 0, 5), // params, programs, states
+    : Plugin(kParamCount, 0, 6), // params, programs, states
       fGain(0.8f),
       fGrainSizeMs(60.0f),
       fDensity(20.0f),
@@ -53,6 +55,12 @@ Grist::Grist()
       fReleaseMs(120.0f),
       fKillOnRetrig(1.0f),
       fNewVoiceOnRetrig(0.0f),
+      fLfo1RateHz(0.25f),
+      fLfo1Shape(0.0f),
+      fLfo2RateHz(0.10f),
+      fLfo2Shape(0.0f),
+      fX(0.0f),
+      fY(0.0f),
       fSampleRate(48000.0),
       gateOn(false),
       currentNote(60),
@@ -78,6 +86,15 @@ Grist::Grist()
 
     for (uint32_t n = 0; n < 128; ++n)
         noteQueues[n].clear();
+
+    modMatrix.clear();
+    // Demo defaults (so it immediately feels "alive")
+    modMatrix.slots[(uint32_t)GristMod::Target::Position][0].source = GristMod::Source::LFO1;
+    modMatrix.slots[(uint32_t)GristMod::Target::Position][0].amount = 0.25f;
+    modMatrix.slots[(uint32_t)GristMod::Target::Pitch][0].source = GristMod::Source::LFO2;
+    modMatrix.slots[(uint32_t)GristMod::Target::Pitch][0].amount = 0.10f;
+
+    for (int i = 0; i < 8; ++i) fMacro[i] = 0.0f;
 }
 
 uint32_t Grist::rngU32()
@@ -166,6 +183,13 @@ void Grist::initState(uint32_t index, State& state)
         state.hints = 0;
         state.label = "Grain Active Viz";
     }
+    else if (index == 5)
+    {
+        state.key = "mod_matrix";
+        state.defaultValue = "";
+        state.hints = 0;
+        state.label = "Mod Matrix";
+    }
 }
 
 void Grist::setState(const char* key, const char* value)
@@ -176,6 +200,48 @@ void Grist::setState(const char* key, const char* value)
     // Output-only states (we still accept them from host silently).
     if (std::strcmp(key, "sample_status") == 0 || std::strcmp(key, "sample_error") == 0 || std::strcmp(key, "grains") == 0 || std::strcmp(key, "grains_active") == 0)
         return;
+
+    if (std::strcmp(key, "mod_matrix") == 0)
+    {
+        // Non-RT: parse routing string into fixed arrays.
+        // Format: target:slot:source:amount;...
+        modMatrix.clear();
+        if (value == nullptr || value[0] == '\0')
+            return;
+
+        const char* p = value;
+        while (*p)
+        {
+            // token up to ';'
+            char tok[96];
+            uint32_t ti = 0;
+            while (*p && *p != ';' && ti + 1 < sizeof(tok)) tok[ti++] = *p++;
+            tok[ti] = '\0';
+            if (*p == ';') ++p;
+
+            // split tok by ':'
+            char* a = tok;
+            char* b = std::strchr(a, ':');
+            if (!b) continue;
+            *b++ = '\0';
+            char* c = std::strchr(b, ':');
+            if (!c) continue;
+            *c++ = '\0';
+            char* d = std::strchr(c, ':');
+            if (!d) continue;
+            *d++ = '\0';
+
+            const GristMod::Target tgt = GristMod::Matrix::parseTarget(a);
+            const long slot = std::strtol(b, nullptr, 10);
+            const GristMod::Source src = GristMod::Matrix::parseSource(c);
+            const float amt = std::strtof(d, nullptr);
+
+            if (slot < 0 || slot >= (long)GristMod::kMaxSlotsPerTarget) continue;
+            modMatrix.slots[(uint32_t)tgt][(uint32_t)slot].source = src;
+            modMatrix.slots[(uint32_t)tgt][(uint32_t)slot].amount = fclampf(amt, -1.0f, 1.0f);
+        }
+        return;
+    }
 
     if (std::strcmp(key, "sample") != 0)
         return;
@@ -337,6 +403,72 @@ void Grist::initParameter(uint32_t index, Parameter& parameter)
         parameter.ranges.min = 0.0f;
         parameter.ranges.max = 1.0f;
         break;
+
+    case kParamLfo1RateHz:
+        parameter.name = "LFO1 Rate";
+        parameter.symbol = "lfo1_rate_hz";
+        parameter.unit = "Hz";
+        parameter.ranges.def = 0.25f;
+        parameter.ranges.min = 0.01f;
+        parameter.ranges.max = 20.0f;
+        break;
+
+    case kParamLfo1Shape:
+        parameter.name = "LFO1 Shape";
+        parameter.symbol = "lfo1_shape";
+        parameter.hints |= kParameterIsInteger;
+        parameter.ranges.def = 0.0f;
+        parameter.ranges.min = 0.0f;
+        parameter.ranges.max = 4.0f; // 0=sine,1=tri,2=saw,3=square,4=s&h
+        break;
+
+    case kParamLfo2RateHz:
+        parameter.name = "LFO2 Rate";
+        parameter.symbol = "lfo2_rate_hz";
+        parameter.unit = "Hz";
+        parameter.ranges.def = 0.10f;
+        parameter.ranges.min = 0.01f;
+        parameter.ranges.max = 20.0f;
+        break;
+
+    case kParamLfo2Shape:
+        parameter.name = "LFO2 Shape";
+        parameter.symbol = "lfo2_shape";
+        parameter.hints |= kParameterIsInteger;
+        parameter.ranges.def = 0.0f;
+        parameter.ranges.min = 0.0f;
+        parameter.ranges.max = 4.0f;
+        break;
+
+    case kParamX:
+        parameter.name = "X";
+        parameter.symbol = "x";
+        parameter.ranges.def = 0.0f;
+        parameter.ranges.min = -1.0f;
+        parameter.ranges.max = 1.0f;
+        break;
+
+    case kParamY:
+        parameter.name = "Y";
+        parameter.symbol = "y";
+        parameter.ranges.def = 0.0f;
+        parameter.ranges.min = -1.0f;
+        parameter.ranges.max = 1.0f;
+        break;
+
+    case kParamMacro1: case kParamMacro2: case kParamMacro3: case kParamMacro4:
+    case kParamMacro5: case kParamMacro6: case kParamMacro7: case kParamMacro8:
+    {
+        const uint32_t m = index - kParamMacro1;
+        static const char* names[8] = {"Macro 1","Macro 2","Macro 3","Macro 4","Macro 5","Macro 6","Macro 7","Macro 8"};
+        static const char* syms[8]  = {"macro1","macro2","macro3","macro4","macro5","macro6","macro7","macro8"};
+        parameter.name = names[m];
+        parameter.symbol = syms[m];
+        parameter.ranges.def = 0.0f;
+        parameter.ranges.min = -1.0f;
+        parameter.ranges.max = 1.0f;
+        break;
+    }
     }
 }
 
@@ -357,6 +489,22 @@ float Grist::getParameterValue(uint32_t index) const
     case kParamReleaseMs: return fReleaseMs;
     case kParamKillOnRetrig: return fKillOnRetrig;
     case kParamNewVoiceOnRetrig: return fNewVoiceOnRetrig;
+
+    case kParamLfo1RateHz: return fLfo1RateHz;
+    case kParamLfo1Shape: return fLfo1Shape;
+    case kParamLfo2RateHz: return fLfo2RateHz;
+    case kParamLfo2Shape: return fLfo2Shape;
+    case kParamX: return fX;
+    case kParamY: return fY;
+    case kParamMacro1: return fMacro[0];
+    case kParamMacro2: return fMacro[1];
+    case kParamMacro3: return fMacro[2];
+    case kParamMacro4: return fMacro[3];
+    case kParamMacro5: return fMacro[4];
+    case kParamMacro6: return fMacro[5];
+    case kParamMacro7: return fMacro[6];
+    case kParamMacro8: return fMacro[7];
+
     default: return 0.0f;
     }
 }
@@ -404,6 +552,35 @@ void Grist::setParameterValue(uint32_t index, float value)
     case kParamNewVoiceOnRetrig:
         fNewVoiceOnRetrig = (value >= 0.5f) ? 1.0f : 0.0f;
         break;
+
+    case kParamLfo1RateHz:
+        fLfo1RateHz = fclampf(value, 0.01f, 20.0f);
+        break;
+    case kParamLfo1Shape:
+        fLfo1Shape = fclampf(std::round(value), 0.0f, 4.0f);
+        break;
+    case kParamLfo2RateHz:
+        fLfo2RateHz = fclampf(value, 0.01f, 20.0f);
+        break;
+    case kParamLfo2Shape:
+        fLfo2Shape = fclampf(std::round(value), 0.0f, 4.0f);
+        break;
+
+    case kParamX:
+        fX = fclampf(value, -1.0f, 1.0f);
+        break;
+    case kParamY:
+        fY = fclampf(value, -1.0f, 1.0f);
+        break;
+
+    case kParamMacro1: fMacro[0] = fclampf(value, -1.0f, 1.0f); break;
+    case kParamMacro2: fMacro[1] = fclampf(value, -1.0f, 1.0f); break;
+    case kParamMacro3: fMacro[2] = fclampf(value, -1.0f, 1.0f); break;
+    case kParamMacro4: fMacro[3] = fclampf(value, -1.0f, 1.0f); break;
+    case kParamMacro5: fMacro[4] = fclampf(value, -1.0f, 1.0f); break;
+    case kParamMacro6: fMacro[5] = fclampf(value, -1.0f, 1.0f); break;
+    case kParamMacro7: fMacro[6] = fclampf(value, -1.0f, 1.0f); break;
+    case kParamMacro8: fMacro[7] = fclampf(value, -1.0f, 1.0f); break;
     }
 }
 
@@ -499,6 +676,28 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
 {
     float* outL = outputs[0];
     float* outR = outputs[1];
+
+    auto lfoValue = [&](float phase, int shape, float& hold) -> float {
+        // phase 0..1
+        const float p = phase - std::floor(phase);
+        switch (shape)
+        {
+        default:
+        case 0: // sine
+            return std::sin(6.283185307179586f * p);
+        case 1: // triangle
+            return 4.0f * std::fabs(p - 0.5f) - 1.0f;
+        case 2: // saw
+            return 2.0f * p - 1.0f;
+        case 3: // square
+            return p < 0.5f ? 1.0f : -1.0f;
+        case 4: // s&h (sample at phase wrap)
+            return hold;
+        }
+    };
+
+    float lfo1Hold = 0.0f;
+    float lfo2Hold = 0.0f;
 
     for (uint32_t i = 0; i < frames; ++i) { outL[i] = 0.0f; outR[i] = 0.0f; }
 
@@ -633,8 +832,26 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
     const double twoPi = 6.283185307179586;
 
     // --- render ---
+    const float lfo1Inc = fLfo1RateHz / (float)fSampleRate;
+    const float lfo2Inc = fLfo2RateHz / (float)fSampleRate;
+    const int lfo1Shape = (int)fLfo1Shape;
+    const int lfo2Shape = (int)fLfo2Shape;
+
     for (uint32_t i = 0; i < frames; ++i)
     {
+        // advance LFOs
+        const float prev1 = lfo1Phase;
+        const float prev2 = lfo2Phase;
+        lfo1Phase += lfo1Inc;
+        lfo2Phase += lfo2Inc;
+        if (lfo1Shape == 4 && (lfo1Phase >= 1.0f || lfo1Phase < prev1)) lfo1Hold = rngFloat01() * 2.0f - 1.0f;
+        if (lfo2Shape == 4 && (lfo2Phase >= 1.0f || lfo2Phase < prev2)) lfo2Hold = rngFloat01() * 2.0f - 1.0f;
+        if (lfo1Phase >= 1.0f) lfo1Phase -= std::floor(lfo1Phase);
+        if (lfo2Phase >= 1.0f) lfo2Phase -= std::floor(lfo2Phase);
+
+        const float lfo1 = lfoValue(lfo1Phase, lfo1Shape, lfo1Hold);
+        const float lfo2 = lfoValue(lfo2Phase, lfo2Shape, lfo2Hold);
+
         float mixL = 0.0f;
         float mixR = 0.0f;
 
@@ -692,14 +909,57 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
 
                     if (slot >= 0)
                     {
-                        const float center = fPosition;
+                        auto srcValue = [&](GristMod::Source src) -> float {
+                            switch (src)
+                            {
+                            default:
+                            case GristMod::Source::None: return 0.0f;
+                            case GristMod::Source::LFO1: return lfo1;
+                            case GristMod::Source::LFO2: return lfo2;
+                            case GristMod::Source::Env1: return voice.env * 2.0f - 1.0f;
+                            case GristMod::Source::Velocity: return voice.velocity * 2.0f - 1.0f;
+                            case GristMod::Source::Keytrack: return fclampf((float)(voice.note - 60) / 24.0f, -1.0f, 1.0f);
+                            case GristMod::Source::X: return fX;
+                            case GristMod::Source::Y: return fY;
+                            case GristMod::Source::Macro1: return fMacro[0];
+                            case GristMod::Source::Macro2: return fMacro[1];
+                            case GristMod::Source::Macro3: return fMacro[2];
+                            case GristMod::Source::Macro4: return fMacro[3];
+                            case GristMod::Source::Macro5: return fMacro[4];
+                            case GristMod::Source::Macro6: return fMacro[5];
+                            case GristMod::Source::Macro7: return fMacro[6];
+                            case GristMod::Source::Macro8: return fMacro[7];
+                            }
+                        };
+
+                        auto targetMod = [&](GristMod::Target tgt) -> float {
+                            float m = 0.0f;
+                            for (uint32_t si = 0; si < GristMod::kMaxSlotsPerTarget; ++si)
+                            {
+                                const auto& sl = modMatrix.slots[(uint32_t)tgt][si];
+                                if (sl.source == GristMod::Source::None || sl.amount == 0.0f) continue;
+                                m += srcValue(sl.source) * sl.amount;
+                            }
+                            return fclampf(m, -1.0f, 1.0f);
+                        };
+
+                        // Apply modulation (MVP): position + pitch. Ranges are intentionally conservative.
+                        float center = fPosition;
+                        center += targetMod(GristMod::Target::Position) * 0.50f; // +/- 50% of position
+                        center = fclampf(center, 0.0f, 1.0f);
+
                         const float spray = fSpray;
+
+                        float pitchSt = fPitch;
+                        pitchSt += targetMod(GristMod::Target::Pitch) * 12.0f; // +/- 12 st
+                        pitchSt = fclampf(pitchSt, -48.0f, 48.0f);
+
                         const float rr = rngFloat01() * 2.0f - 1.0f; // -1..1
                         const float pos01 = fclampf(center + rr * spray, 0.0f, 1.0f);
                         const double start = (double)pos01 * (double)(len - 2);
 
                         const double noteMul = midiNoteToHz(voice.note) / midiNoteToHz(60);
-                        const double pitchMul = std::pow(2.0, (double)fPitch / 12.0);
+                        const double pitchMul = std::pow(2.0, (double)pitchSt / 12.0);
                         const double srMul = (double)s->sampleRate / fSampleRate;
                         const double pitchEnvMul = std::pow(2.0, (double)voice.pitchEnv / 12.0);
                         const double baseInc = noteMul * pitchMul * pitchEnvMul * srMul;
