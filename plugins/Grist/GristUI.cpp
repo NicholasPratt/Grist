@@ -101,8 +101,8 @@ void GristUI::layoutWaveArea()
 
 void GristUI::layoutPerform()
 {
-    // tabs
-    tabX = 18.0f;
+    // tabs (move right so they don't cover the GRIST title)
+    tabX = 160.0f;
     tabY = 14.0f;
     tabW = 92.0f;
     tabH = 30.0f;
@@ -140,9 +140,10 @@ void GristUI::initKnobs()
     const float colX = waveX + waveW + 18.0f;
     const float colW = getWidth() - 18.0f - colX;
 
-    const float macroR = 46.0f;
-    const float macroGapX = 24.0f;
-    const float macroGapY = 18.0f;
+    // Macros: slightly smaller so the panel breathes
+    const float macroR = 38.0f;
+    const float macroGapX = 22.0f;
+    const float macroGapY = 14.0f;
 
     // 2x2 macros
     const float m0x = colX + 18.0f + macroR;
@@ -162,14 +163,14 @@ void GristUI::initKnobs()
         macro[i] = { cx, cy, macroR, mdefs[i].p, -1.0f, 1.0f, 0.0f, mdefs[i].label, "", true, 0.0f };
     }
 
-    // Hero knobs (bottom-right panel)
-    // We keep them in a single vertical column (requested), packed tightly.
+    // Hero knobs (bottom-right panel) — 2 columns
     const float stripY = waveY + waveH + 18.0f;
     const float stripH = getHeight() - stripY - 18.0f;
 
-    const float heroR = 14.0f;
-    const float heroGapY = 4.0f;
-    const float heroTop = stripY + 24.0f + heroR;
+    const float heroR = 20.0f;
+    const float heroGapY = 10.0f;
+    const float heroGapX = 34.0f;
+    const float heroTop = stripY + 32.0f + heroR;
     const float heroLeft = colX + 18.0f + heroR;
 
     const struct { uint32_t p; float minV; float maxV; float defV; const char* label; const char* unit; bool bipolar; } hdefs[5] = {
@@ -182,8 +183,8 @@ void GristUI::initKnobs()
 
     for (uint32_t i = 0; i < 5; ++i)
     {
-        const float cx = heroLeft;
-        const float cy = heroTop + i * (heroR * 2.0f + heroGapY);
+        const float cx = heroLeft + (i % 2) * (heroR * 2.0f + heroGapX);
+        const float cy = heroTop + (i / 2) * (heroR * 2.0f + heroGapY);
         hero[i] = { cx, cy, heroR, hdefs[i].p, hdefs[i].minV, hdefs[i].maxV, hdefs[i].defV, hdefs[i].label, hdefs[i].unit, hdefs[i].bipolar, hdefs[i].defV };
     }
 
