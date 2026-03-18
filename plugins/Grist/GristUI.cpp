@@ -145,9 +145,12 @@ void GristUI::initKnobs()
     const float macroGapX = 22.0f;
     const float macroGapY = 14.0f;
 
-    // 2x2 macros
-    const float m0x = colX + 18.0f + macroR;
-    const float m0y = waveY + 24.0f + macroR;
+    // Macros (2 knobs) centered within the macros panel
+    const float macrosPad = 18.0f;
+    const float macrosInnerW = colW - macrosPad * 2.0f;
+    const float macrosRowW = 2.0f * (macroR * 2.0f) + macroGapX;
+    const float m0x = colX + macrosPad + (macrosInnerW - macrosRowW) * 0.5f + macroR;
+    const float m0y = waveY + 30.0f + macroR;
 
     const struct { uint32_t p; const char* label; } mdefs[2] = {
         { kParamMacro1, "MACRO 1" },
@@ -195,13 +198,14 @@ void GristUI::initKnobs()
         small[i] = { cx, cy, smallR, sdefs[i].p, sdefs[i].minV, sdefs[i].maxV, sdefs[i].defV, sdefs[i].label, sdefs[i].unit, sdefs[i].bipolar, sdefs[i].defV };
     }
 
-    // Hero knobs (GRAINS) — same size as small knobs, right-aligned row
+    // Hero knobs (GRAINS) — same size as small knobs, centered in the right-side area
     const float heroR = smallR;
     const float heroGapX = 24.0f;
     const float heroY = stripY + stripH * 0.5f;
-    const float rightEdge = getWidth() - 18.0f;
+    const float rightAreaX = colX;
+    const float rightAreaW = getWidth() - 18.0f - rightAreaX;
     const float rowW = kNumHeroKnobs * (heroR * 2.0f) + (kNumHeroKnobs - 1) * heroGapX;
-    const float heroStartX = rightEdge - rowW + heroR;
+    const float heroStartX = rightAreaX + (rightAreaW - rowW) * 0.5f + heroR;
 
     for (uint32_t i = 0; i < kNumHeroKnobs; ++i)
     {
@@ -303,7 +307,7 @@ bool GristUI::hitTestModBox(float x, float y, int& outTarget, int& outSlot) cons
 
         // boxes below the knob (centered)
         const float bx0 = hero[i].x - slotsW * 0.5f;
-        const float by0 = hero[i].y + hero[i].r + 10.0f;
+        const float by0 = hero[i].y + hero[i].r + 44.0f;
 
         for (uint32_t s = 0; s < kSlotsPerTarget; ++s)
         {
@@ -646,7 +650,7 @@ void GristUI::drawTabButton(float x, float y, float w, float h, const char* labe
     fontSize(12.0f);
     fillColor(on ? T.accent[0] : T.textMuted[0], on ? T.accent[1] : T.textMuted[1], on ? T.accent[2] : T.textMuted[2]);
     textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
-    text(x + w*0.5f, y + h*0.5f - 1.5f, label, nullptr);
+    text(x + w*0.5f, y + h*0.5f - 3.0f, label, nullptr);
 }
 
 void GristUI::drawKnob(const Knob& k, bool active)
@@ -739,14 +743,14 @@ void GristUI::onNanoDisplay()
     fill();
 
     // title block
-    fontSize(20.0f);
+    fontSize(26.0f);
     fillColor(T.accent[0], T.accent[1], T.accent[2]);
     textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
-    text(18.0f, 36.0f, "GRIST", nullptr);
+    text(18.0f, 34.0f, "GRIST", nullptr);
 
     fontSize(11.0f);
     fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
-    text(88.0f, 36.0f, "granular synth", nullptr);
+    text(106.0f, 34.0f, "granular synth", nullptr);
 
     // tabs
     drawTabButton(tabX, tabY, tabW, tabH, "PERFORM", tab == Tab::Perform);
@@ -772,7 +776,7 @@ void GristUI::onNanoDisplay()
         fontSize(12.0f);
         fillColor(T.text[0], T.text[1], T.text[2]);
         textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
-        text(x + w*0.5f, y + h*0.5f - 1.5f, label, nullptr);
+        text(x + w*0.5f, y + h*0.5f - 3.0f, label, nullptr);
     };
 
     drawButton(btn2X, btn2Y, btn2W, btn2H, "Load sample…");
@@ -1007,7 +1011,7 @@ void GristUI::onNanoDisplay()
         fontSize(10.5f);
         fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
         textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
-        text(colX + 18.0f, colY + 14.0f, "MACROS", nullptr);
+        text(colX + 18.0f, colY + 16.0f, "MACROS", nullptr);
 
         for (uint32_t i = 0; i < kNumMacroKnobs; ++i)
             drawKnob(macro[i], activeKnobGroup == 0 && activeKnobIndex == (int)i);
@@ -1045,7 +1049,7 @@ void GristUI::onNanoDisplay()
         const float gap = 6.0f;
         const float slotsW = kSlotsPerTarget * bs + (kSlotsPerTarget - 1) * gap;
         const float bx = hero[i].x - slotsW * 0.5f;
-        const float by = hero[i].y + hero[i].r + 10.0f;
+        const float by = hero[i].y + hero[i].r + 44.0f;
         drawModSlotsForParam(hero[i].param, bx, by);
     }
 }
