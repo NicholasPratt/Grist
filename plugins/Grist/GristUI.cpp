@@ -35,10 +35,235 @@ GristUI::GristUI()
     loadSharedResources();
     layoutWaveArea();
     initSliders();
+    initModDefaults();
 
     for (uint32_t i = 0; i < kMaxVizGrains; ++i)
         grainPos[i] = 0.0f;
     grainCount = 0;
+}
+
+void GristUI::initModDefaults()
+{
+    // Keep UI defaults aligned with DSP demo defaults (non-authoritative; DSP is ground truth).
+    for (uint32_t t = 0; t < (uint32_t)ModTarget::COUNT; ++t)
+        for (uint32_t s = 0; s < kSlotsPerTarget; ++s)
+            mod[t][s] = ModSlot{};
+
+    mod[(uint32_t)ModTarget::Position][0].src = ModSource::LFO1;
+    mod[(uint32_t)ModTarget::Position][0].amt = 0.25f;
+    mod[(uint32_t)ModTarget::Pitch][0].src = ModSource::LFO2;
+    mod[(uint32_t)ModTarget::Pitch][0].amt = 0.10f;
+
+    // Push once so a fresh instance stays in sync with DSP (host may ignore until first interaction).
+    pushModMatrixState();
+}
+
+const char* GristUI::modSourceId(ModSource s) const
+{
+    switch (s)
+    {
+    default:
+    case ModSource::None: return "none";
+    case ModSource::LFO1: return "lfo1";
+    case ModSource::LFO2: return "lfo2";
+    case ModSource::Env1: return "env1";
+    case ModSource::Vel:  return "vel";
+    case ModSource::Key:  return "key";
+    case ModSource::X:    return "x";
+    case ModSource::Y:    return "y";
+    case ModSource::M1:   return "m1";
+    case ModSource::M2:   return "m2";
+    case ModSource::M3:   return "m3";
+    case ModSource::M4:   return "m4";
+    case ModSource::M5:   return "m5";
+    case ModSource::M6:   return "m6";
+    case ModSource::M7:   return "m7";
+    case ModSource::M8:   return "m8";
+    }
+}
+
+const char* GristUI::modSourceLabel(ModSource s) const
+{
+    switch (s)
+    {
+    default:
+    case ModSource::None: return "—";
+    case ModSource::LFO1: return "L1";
+    case ModSource::LFO2: return "L2";
+    case ModSource::Env1: return "E1";
+    case ModSource::Vel:  return "Vel";
+    case ModSource::Key:  return "Key";
+    case ModSource::X:    return "X";
+    case ModSource::Y:    return "Y";
+    case ModSource::M1:   return "M1";
+    case ModSource::M2:   return "M2";
+    case ModSource::M3:   return "M3";
+    case ModSource::M4:   return "M4";
+    case ModSource::M5:   return "M5";
+    case ModSource::M6:   return "M6";
+    case ModSource::M7:   return "M7";
+    case ModSource::M8:   return "M8";
+    }
+}
+
+GristUI::ModSource GristUI::nextModSource(ModSource s) const
+{
+    const uint32_t v = (uint32_t)s;
+    const uint32_t n = (v + 1) % (uint32_t)ModSource::COUNT;
+    return (ModSource)n;
+}
+
+bool GristUI::sliderToModTarget(uint32_t param, ModTarget& tgt) const
+{
+    if (param == kParamPosition) { tgt = ModTarget::Position; return true; }
+    if (param == kParamPitch)    { tgt = ModTarget::Pitch;    return true; }
+    return false;
+}
+
+bool GristUI::hitTestModBox(float x, float y, int& outTarget, int& outSlot) const
+{
+    for (uint32_t i = 0; i < kNumSliders; ++i)
+    {
+        ModTarget tgt;
+        if (!sliderToModTarget(sliders[i].param, tgt))
+            continue;
+
+        // boxes live to the right of the label, near the top of the slider card
+        const float bx0 = sliders[i].x + sliders[i].w - 34.0f;
+        const float by0 = sliders[i].y + 6.0f;
+        const float bs = 9.0f;
+        const float gap = 4.0f;
+        for (uint32_t s = 0; s < kSlotsPerTarget; ++s)
+        {
+            const float bx = bx0 + (float)s * (bs + gap);
+            const float by = by0;
+            if (x >= bx && x <= bx + bs && y >= by && y <= by + bs)
+            {
+                outTarget = (int)tgt;
+                outSlot = (int)s;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void GristUI::pushModMatrixState()
+{
+    // Build state string: target:slot:source:amount;...
+    // Keep it short.
+    char buf[512];
+    uint32_t pos = 0;
+
+    auto append = [&](const char* s) {
+        if (!s) return;
+        const size_t n = std::strlen(s);
+        if (pos + n + 1 >= sizeof(buf)) return;
+        std::memcpy(buf + pos, s, n);
+        pos += (uint32_t)n;
+        buf[pos] = '\0';
+    };
+
+    auto appendf = [&](const char* fmt, const char* a, int b, const char* c, float d) {
+        if (pos + 32 >= sizeof(buf)) return;
+        const int n = std::snprintf(buf + pos, sizeof(buf) - pos, fmt, a, b, c, d);
+        if (n > 0) pos += (uint32_t)n;
+    };
+
+    auto targetId = [&](ModTarget t) -> const char* {
+        switch (t)
+        {
+        default:
+        case ModTarget::Position: return "pos";
+        case ModTarget::Pitch:    return "pitch";
+        }
+    };
+
+    bool first = true;
+    for (uint32_t t = 0; t < (uint32_t)ModTarget::COUNT; ++t)
+    {
+        for (uint32_t s = 0; s < kSlotsPerTarget; ++s)
+        {
+            const ModSlot& sl = mod[t][s];
+            if (sl.src == ModSource::None) continue;
+            if (std::fabs(sl.amt) < 1e-6f) continue;
+
+            if (!first) append(";");
+            first = false;
+            appendf("%s:%d:%s:%.4f", targetId((ModTarget)t), (int)s, modSourceId(sl.src), sl.amt);
+        }
+    }
+
+    buf[std::min<uint32_t>(pos, (uint32_t)sizeof(buf) - 1)] = '\0';
+    setState("mod_matrix", buf);
+}
+
+void GristUI::parseModMatrixState(const char* value)
+{
+    for (uint32_t t = 0; t < (uint32_t)ModTarget::COUNT; ++t)
+        for (uint32_t s = 0; s < kSlotsPerTarget; ++s)
+            mod[t][s] = ModSlot{};
+
+    if (!value || !value[0])
+        return;
+
+    auto parseTarget = [&](const char* id) -> int {
+        if (!id) return -1;
+        if (std::strcmp(id, "pos") == 0) return (int)ModTarget::Position;
+        if (std::strcmp(id, "pitch") == 0) return (int)ModTarget::Pitch;
+        return -1;
+    };
+
+    auto parseSource = [&](const char* id) -> ModSource {
+        if (!id) return ModSource::None;
+        if (std::strcmp(id, "lfo1") == 0) return ModSource::LFO1;
+        if (std::strcmp(id, "lfo2") == 0) return ModSource::LFO2;
+        if (std::strcmp(id, "env1") == 0) return ModSource::Env1;
+        if (std::strcmp(id, "vel") == 0)  return ModSource::Vel;
+        if (std::strcmp(id, "key") == 0)  return ModSource::Key;
+        if (std::strcmp(id, "x") == 0)    return ModSource::X;
+        if (std::strcmp(id, "y") == 0)    return ModSource::Y;
+        if (std::strcmp(id, "m1") == 0)   return ModSource::M1;
+        if (std::strcmp(id, "m2") == 0)   return ModSource::M2;
+        if (std::strcmp(id, "m3") == 0)   return ModSource::M3;
+        if (std::strcmp(id, "m4") == 0)   return ModSource::M4;
+        if (std::strcmp(id, "m5") == 0)   return ModSource::M5;
+        if (std::strcmp(id, "m6") == 0)   return ModSource::M6;
+        if (std::strcmp(id, "m7") == 0)   return ModSource::M7;
+        if (std::strcmp(id, "m8") == 0)   return ModSource::M8;
+        return ModSource::None;
+    };
+
+    const char* p = value;
+    while (*p)
+    {
+        char tok[96];
+        uint32_t ti = 0;
+        while (*p && *p != ';' && ti + 1 < sizeof(tok)) tok[ti++] = *p++;
+        tok[ti] = '\0';
+        if (*p == ';') ++p;
+
+        char* a = tok;
+        char* b = std::strchr(a, ':');
+        if (!b) continue;
+        *b++ = '\0';
+        char* c = std::strchr(b, ':');
+        if (!c) continue;
+        *c++ = '\0';
+        char* d = std::strchr(c, ':');
+        if (!d) continue;
+        *d++ = '\0';
+
+        const int tgt = parseTarget(a);
+        const int slot = (int)std::strtol(b, nullptr, 10);
+        const ModSource src = parseSource(c);
+        const float amt = (float)std::strtof(d, nullptr);
+
+        if (tgt < 0) continue;
+        if (slot < 0 || slot >= (int)kSlotsPerTarget) continue;
+        mod[(uint32_t)tgt][(uint32_t)slot].src = src;
+        mod[(uint32_t)tgt][(uint32_t)slot].amt = fclampf(amt, -1.0f, 1.0f);
+    }
 }
 
 void GristUI::initSliders()
@@ -324,6 +549,13 @@ void GristUI::stateChanged(const char* key, const char* value)
         return;
     }
 
+    if (std::strcmp(key, "mod_matrix") == 0)
+    {
+        parseModMatrixState(value);
+        repaint();
+        return;
+    }
+
     if (std::strcmp(key, "sample_status") == 0)
     {
         if (value && std::strcmp(value, "error") == 0)
@@ -413,6 +645,30 @@ bool GristUI::onMouse(const MouseEvent& ev)
             return true;
         }
 
+        // Mod box hit test (click cycles source; drag adjusts amount)
+        {
+            int mt = -1, ms = -1;
+            if (hitTestModBox(mx, my, mt, ms))
+            {
+                // Start drag
+                modDragTarget = mt;
+                modDragSlot = ms;
+                modDragStartY = my;
+                modDragStartAmt = mod[(uint32_t)mt][(uint32_t)ms].amt;
+
+                // If you click without much movement, this will still feel like “cycle source then tweak amount”.
+                mod[(uint32_t)mt][(uint32_t)ms].src = nextModSource(mod[(uint32_t)mt][(uint32_t)ms].src);
+                if (mod[(uint32_t)mt][(uint32_t)ms].src == ModSource::None)
+                    mod[(uint32_t)mt][(uint32_t)ms].amt = 0.0f;
+                else if (std::fabs(mod[(uint32_t)mt][(uint32_t)ms].amt) < 1e-6f)
+                    mod[(uint32_t)mt][(uint32_t)ms].amt = 0.10f;
+
+                pushModMatrixState();
+                repaint();
+                return true;
+            }
+        }
+
         // Load sample (open file dialog)
         if (mx >= btn2X && mx <= btn2X + btn2W && my >= btn2Y && my <= btn2Y + btn2H)
         {
@@ -433,6 +689,8 @@ bool GristUI::onMouse(const MouseEvent& ev)
     else
     {
         active = -1;
+        modDragTarget = -1;
+        modDragSlot = -1;
     }
 
     return false;
@@ -440,6 +698,20 @@ bool GristUI::onMouse(const MouseEvent& ev)
 
 bool GristUI::onMotion(const MotionEvent& ev)
 {
+    // Mod amount drag
+    if (modDragTarget >= 0 && modDragSlot >= 0)
+    {
+        const float dy = (modDragStartY - ev.pos.getY());
+        // 180 px for full scale feels OK with current UI size
+        const float delta = dy / 180.0f;
+        float a = modDragStartAmt + delta;
+        a = fclampf(a, -1.0f, 1.0f);
+        mod[(uint32_t)modDragTarget][(uint32_t)modDragSlot].amt = a;
+        pushModMatrixState();
+        repaint();
+        return true;
+    }
+
     if (active < 0)
         return false;
 
@@ -633,6 +905,47 @@ void GristUI::onNanoDisplay()
         fillColor(0.9f, 0.9f, 0.9f);
         textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
         text(s.x + s.w*0.5f, s.y + 12.0f, s.label, nullptr);
+
+        // mod slots (only for mapped targets)
+        ModTarget mt;
+        if (sliderToModTarget(s.param, mt))
+        {
+            const float bx0 = s.x + s.w - 34.0f;
+            const float by0 = s.y + 6.0f;
+            const float bs = 9.0f;
+            const float gap = 4.0f;
+            for (uint32_t si = 0; si < kSlotsPerTarget; ++si)
+            {
+                const float bx = bx0 + (float)si * (bs + gap);
+                const float by = by0;
+
+                beginPath();
+                roundedRect(bx, by, bs, bs, 2.0f);
+                const ModSlot& sl = mod[(uint32_t)mt][si];
+                if (sl.src == ModSource::None)
+                    fillColor(0.14f, 0.14f, 0.15f);
+                else
+                {
+                    // amount sign = tint
+                    const float a = fclampf(std::fabs(sl.amt), 0.0f, 1.0f);
+                    if (sl.amt >= 0.0f)
+                        fillColor(0.20f + 0.30f*a, 0.18f + 0.22f*a, 0.10f, 1.0f);
+                    else
+                        fillColor(0.12f, 0.18f + 0.30f*a, 0.26f + 0.22f*a, 1.0f);
+                }
+                fill();
+
+                strokeColor(0.30f, 0.30f, 0.34f);
+                strokeWidth(1.0f);
+                stroke();
+
+                // tiny label
+                fontSize(7.5f);
+                fillColor(0.92f, 0.92f, 0.92f);
+                textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
+                text(bx + bs*0.5f, by + bs*0.5f + 0.2f, modSourceLabel(sl.src), nullptr);
+            }
+        }
 
         // value
         char buf[32];

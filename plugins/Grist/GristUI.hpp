@@ -49,6 +49,44 @@ private:
     Slider sliders[kNumSliders];
     int active;
 
+    // --- modulation UI (slot boxes) ---
+    enum class ModSource : uint8_t {
+        None = 0,
+        LFO1,
+        LFO2,
+        Env1,
+        Vel,
+        Key,
+        X,
+        Y,
+        M1, M2, M3, M4, M5, M6, M7, M8,
+        COUNT
+    };
+
+    enum class ModTarget : uint8_t {
+        Position = 0,
+        Pitch,
+        COUNT
+    };
+
+    struct ModSlot { ModSource src = ModSource::None; float amt = 0.0f; };
+    static constexpr uint32_t kSlotsPerTarget = 3;
+    ModSlot mod[(uint32_t)ModTarget::COUNT][kSlotsPerTarget];
+
+    int modDragTarget = -1; // ModTarget index
+    int modDragSlot = -1;   // 0..2
+    float modDragStartY = 0.0f;
+    float modDragStartAmt = 0.0f;
+
+    void initModDefaults();
+    void pushModMatrixState();
+    void parseModMatrixState(const char* value);
+    const char* modSourceId(ModSource s) const;
+    const char* modSourceLabel(ModSource s) const;
+    ModSource nextModSource(ModSource s) const;
+    bool sliderToModTarget(uint32_t param, ModTarget& tgt) const;
+    bool hitTestModBox(float x, float y, int& outTarget, int& outSlot) const;
+
     void initSliders();
     int hitTest(float x, float y) const;
     float yToNorm(const Slider& s, float y) const;
