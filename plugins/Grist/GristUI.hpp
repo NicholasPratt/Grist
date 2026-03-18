@@ -81,6 +81,8 @@ private:
     // XY tab
     float xyX = 0.0f, xyY = 0.0f, xyW = 0.0f, xyH = 0.0f;
     bool xyActive = false;
+    float xVal = 0.0f; // cached param (kParamX)
+    float yVal = 0.0f; // cached param (kParamY)
 
     void initKnobs();
     void layoutPerform();

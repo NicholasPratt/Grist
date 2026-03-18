@@ -321,6 +321,9 @@ bool GristUI::hitTestModBox(float x, float y, int& outTarget, int& outSlot) cons
 
 void GristUI::parameterChanged(uint32_t index, float value)
 {
+    if (index == kParamX) xVal = fclampf(value, -1.0f, 1.0f);
+    if (index == kParamY) yVal = fclampf(value, -1.0f, 1.0f);
+
     auto upd = [&](Knob* ks, uint32_t n) {
         for (uint32_t i = 0; i < n; ++i)
             if (ks[i].param == index)
@@ -779,21 +782,95 @@ void GristUI::onNanoDisplay()
         // XY pad
         beginPath();
         roundedRect(xyX, xyY, xyW, xyH, 14.0f);
-        fillColor(0.10f, 0.10f, 0.11f);
+        fillColor(T.panel[0], T.panel[1], T.panel[2]);
         fill();
-        strokeColor(0.25f, 0.25f, 0.28f);
+
+        // subtle bezel
+        beginPath();
+        roundedRect(xyX + 2.0f, xyY + 2.0f, xyW - 4.0f, xyH - 4.0f, 12.0f);
+        strokeColor(T.stroke[0], T.stroke[1], T.stroke[2]);
         strokeWidth(1.0f);
         stroke();
 
-        // crosshair (from parameters)
-        const float xv = fclampf((macro[0].value*0.0f) + 0.0f, -1.0f, 1.0f); // unused; keep static analysis calm
-        (void)xv;
-        // We don't cache X/Y knobs; just draw from last known param changes by asking UI? DPF doesn't provide getter.
-        // We'll render a hint only.
-        fontSize(14.0f);
-        fillColor(0.90f, 0.90f, 0.90f);
-        textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
-        text(xyX + xyW*0.5f, xyY + 18.0f, "X/Y PAD (drag)", nullptr);
+        // grid
+        const float innerX = xyX + 14.0f;
+        const float innerY = xyY + 28.0f;
+        const float innerW = xyW - 28.0f;
+        const float innerH = xyH - 42.0f;
+
+        for (int i = 1; i < 8; ++i)
+        {
+            const float x = innerX + innerW * (float)i / 8.0f;
+            beginPath();
+            moveTo(x, innerY);
+            lineTo(x, innerY + innerH);
+            strokeColor(0.0f, 0.0f, 0.0f, 0.16f);
+            strokeWidth(1.0f);
+            stroke();
+        }
+        for (int i = 1; i < 6; ++i)
+        {
+            const float y = innerY + innerH * (float)i / 6.0f;
+            beginPath();
+            moveTo(innerX, y);
+            lineTo(innerX + innerW, y);
+            strokeColor(0.0f, 0.0f, 0.0f, 0.16f);
+            strokeWidth(1.0f);
+            stroke();
+        }
+
+        // center lines
+        beginPath();
+        moveTo(innerX + innerW*0.5f, innerY);
+        lineTo(innerX + innerW*0.5f, innerY + innerH);
+        strokeColor(1.0f, 1.0f, 1.0f, 0.06f);
+        strokeWidth(2.0f);
+        stroke();
+        beginPath();
+        moveTo(innerX, innerY + innerH*0.5f);
+        lineTo(innerX + innerW, innerY + innerH*0.5f);
+        strokeColor(1.0f, 1.0f, 1.0f, 0.06f);
+        strokeWidth(2.0f);
+        stroke();
+
+        // crosshair from cached params
+        const float cx = innerX + (xVal * 0.5f + 0.5f) * innerW;
+        const float cy = innerY + (1.0f - (yVal * 0.5f + 0.5f)) * innerH;
+
+        beginPath();
+        moveTo(cx, innerY);
+        lineTo(cx, innerY + innerH);
+        strokeColor(T.accent[0], T.accent[1], T.accent[2], 0.22f);
+        strokeWidth(2.0f);
+        stroke();
+        beginPath();
+        moveTo(innerX, cy);
+        lineTo(innerX + innerW, cy);
+        strokeColor(T.accent[0], T.accent[1], T.accent[2], 0.22f);
+        strokeWidth(2.0f);
+        stroke();
+
+        beginPath();
+        circle(cx, cy, 9.0f);
+        fillColor(T.accent[0], T.accent[1], T.accent[2], 0.22f);
+        fill();
+        beginPath();
+        circle(cx, cy, 4.0f);
+        fillColor(T.accentHi[0], T.accentHi[1], T.accentHi[2]);
+        fill();
+
+        // label + values
+        fontSize(12.0f);
+        fillColor(T.text[0], T.text[1], T.text[2]);
+        textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
+        text(xyX + 18.0f, xyY + 16.0f, "X/Y PAD", nullptr);
+
+        char vbuf[64];
+        std::snprintf(vbuf, sizeof(vbuf), "X %.2f   Y %.2f", xVal, yVal);
+        fontSize(11.0f);
+        fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
+        textAlign(ALIGN_RIGHT | ALIGN_MIDDLE);
+        text(xyX + xyW - 18.0f, xyY + 16.0f, vbuf, nullptr);
 
         return;
     }
@@ -912,11 +989,18 @@ void GristUI::onNanoDisplay()
 
     beginPath();
     roundedRect(colX, colY, colW, colH, 14.0f);
-    fillColor(0.09f, 0.09f, 0.10f);
+    fillColor(T.panel[0], T.panel[1], T.panel[2]);
     fill();
-    strokeColor(0.20f, 0.20f, 0.22f);
+    strokeColor(T.stroke[0], T.stroke[1], T.stroke[2]);
     strokeWidth(1.0f);
     stroke();
+
+    // section headers
+    fontSize(10.5f);
+    fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
+    textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
+    text(colX + 18.0f, colY + 14.0f, "MACROS", nullptr);
+    text(colX + 18.0f, colY + 110.0f, "GRAINS", nullptr);
 
     // macros
     for (uint32_t i = 0; i < kNumMacroKnobs; ++i)
@@ -937,11 +1021,16 @@ void GristUI::onNanoDisplay()
     const float stripH = getHeight() - stripY - 18.0f;
     beginPath();
     roundedRect(waveX, stripY, getWidth() - 36.0f, stripH, 14.0f);
-    fillColor(0.09f, 0.09f, 0.10f);
+    fillColor(T.panel[0], T.panel[1], T.panel[2]);
     fill();
-    strokeColor(0.20f, 0.20f, 0.22f);
+    strokeColor(T.stroke[0], T.stroke[1], T.stroke[2]);
     strokeWidth(1.0f);
     stroke();
+
+    fontSize(10.5f);
+    fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
+    textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
+    text(waveX + 18.0f, stripY + 14.0f, "AMP / ENV", nullptr);
 
     for (uint32_t i = 0; i < kNumSmallKnobs; ++i)
         drawKnob(small[i], activeKnobGroup == 2 && activeKnobIndex == (int)i);
