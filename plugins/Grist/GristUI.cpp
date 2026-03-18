@@ -149,17 +149,16 @@ void GristUI::initKnobs()
     const float m0x = colX + 18.0f + macroR;
     const float m0y = waveY + 24.0f + macroR;
 
-    const struct { uint32_t p; const char* label; } mdefs[4] = {
+    const struct { uint32_t p; const char* label; } mdefs[2] = {
         { kParamMacro1, "MACRO 1" },
         { kParamMacro2, "MACRO 2" },
-        { kParamMacro3, "MACRO 3" },
-        { kParamMacro4, "MACRO 4" },
     };
 
-    for (uint32_t i = 0; i < 4; ++i)
+    // 2 macros side-by-side
+    for (uint32_t i = 0; i < 2; ++i)
     {
-        const float cx = m0x + (i % 2) * (macroR * 2.0f + macroGapX);
-        const float cy = m0y + (i / 2) * (macroR * 2.0f + macroGapY);
+        const float cx = m0x + i * (macroR * 2.0f + macroGapX);
+        const float cy = m0y;
         macro[i] = { cx, cy, macroR, mdefs[i].p, -1.0f, 1.0f, 0.0f, mdefs[i].label, "", true, 0.0f };
     }
 

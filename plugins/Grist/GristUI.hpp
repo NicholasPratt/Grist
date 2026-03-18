@@ -65,7 +65,7 @@ private:
     char sampleLabel[120];
 
     // Knobs on PERFORM
-    static constexpr uint32_t kNumMacroKnobs = 4;
+    static constexpr uint32_t kNumMacroKnobs = 2;
     static constexpr uint32_t kNumHeroKnobs  = 5;
     static constexpr uint32_t kNumSmallKnobs = 6;
 
