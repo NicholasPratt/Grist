@@ -96,7 +96,7 @@ void GristUI::layoutWaveArea()
     waveX = 18.0f;
     waveY = 60.0f;
     waveW = 620.0f;
-    waveH = 180.0f;
+    waveH = 160.0f;
 }
 
 void GristUI::layoutPerform()
@@ -123,7 +123,7 @@ void GristUI::layoutPerform()
     waveX = 18.0f;
     waveY = 60.0f;
     waveW = getWidth() - 18.0f - 18.0f - 300.0f;
-    waveH = 180.0f;
+    waveH = 160.0f;
 }
 
 void GristUI::layoutXY()
@@ -162,11 +162,15 @@ void GristUI::initKnobs()
         macro[i] = { cx, cy, macroR, mdefs[i].p, -1.0f, 1.0f, 0.0f, mdefs[i].label, "", true, 0.0f };
     }
 
-    // Hero knobs (under macros)
-    const float heroR = 30.0f;
-    const float heroTop = waveY + 2.0f * (macroR * 2.0f + macroGapY) + 40.0f;
+    // Hero knobs (bottom-right panel)
+    // We keep them in a single vertical column (requested), packed tightly.
+    const float stripY = waveY + waveH + 18.0f;
+    const float stripH = getHeight() - stripY - 18.0f;
+
+    const float heroR = 14.0f;
+    const float heroGapY = 4.0f;
+    const float heroTop = stripY + 24.0f + heroR;
     const float heroLeft = colX + 18.0f + heroR;
-    const float heroGapY = 18.0f;
 
     const struct { uint32_t p; float minV; float maxV; float defV; const char* label; const char* unit; bool bipolar; } hdefs[5] = {
         { kParamGrainSizeMs, 5.0f, 250.0f, 60.0f, "SIZE", "ms", false },
@@ -183,9 +187,8 @@ void GristUI::initKnobs()
         hero[i] = { cx, cy, heroR, hdefs[i].p, hdefs[i].minV, hdefs[i].maxV, hdefs[i].defV, hdefs[i].label, hdefs[i].unit, hdefs[i].bipolar, hdefs[i].defV };
     }
 
-    // Small knobs along bottom under waveform
-    const float stripY = waveY + waveH + 18.0f;
-    const float stripH = getHeight() - stripY - 18.0f;
+    // Small knobs along bottom under waveform (left strip only)
+    // stripY/stripH already computed above.
 
     const float smallR = 22.0f;
     const float startX = waveX + 18.0f + smallR;
@@ -981,46 +984,66 @@ void GristUI::onNanoDisplay()
         }
     }
 
-    // Right column panel
+    // Right panels
     const float colX = waveX + waveW + 18.0f;
-    const float colY = waveY;
     const float colW = getWidth() - 18.0f - colX;
-    const float colH = waveH;
 
-    beginPath();
-    roundedRect(colX, colY, colW, colH, 14.0f);
-    fillColor(T.panel[0], T.panel[1], T.panel[2]);
-    fill();
-    strokeColor(T.stroke[0], T.stroke[1], T.stroke[2]);
-    strokeWidth(1.0f);
-    stroke();
+    const float stripY = waveY + waveH + 18.0f;
+    const float stripH = getHeight() - stripY - 18.0f;
 
-    // section headers
-    fontSize(10.5f);
-    fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
-    textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
-    text(colX + 18.0f, colY + 14.0f, "MACROS", nullptr);
-    text(colX + 18.0f, colY + 110.0f, "GRAINS", nullptr);
-
-    // macros
-    for (uint32_t i = 0; i < kNumMacroKnobs; ++i)
-        drawKnob(macro[i], activeKnobGroup == 0 && activeKnobIndex == (int)i);
-
-    // hero knobs + mod slots
-    for (uint32_t i = 0; i < kNumHeroKnobs; ++i)
+    // Top-right: macros
     {
-        drawKnob(hero[i], activeKnobGroup == 1 && activeKnobIndex == (int)i);
-        // mod slots next to knob top
-        const float bx = hero[i].x + hero[i].r + 8.0f;
-        const float by = hero[i].y - hero[i].r - 2.0f;
-        drawModSlotsForParam(hero[i].param, bx, by);
+        const float colY = waveY;
+        const float colH = waveH;
+
+        beginPath();
+        roundedRect(colX, colY, colW, colH, 14.0f);
+        fillColor(T.panel[0], T.panel[1], T.panel[2]);
+        fill();
+        strokeColor(T.stroke[0], T.stroke[1], T.stroke[2]);
+        strokeWidth(1.0f);
+        stroke();
+
+        fontSize(10.5f);
+        fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
+        textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
+        text(colX + 18.0f, colY + 14.0f, "MACROS", nullptr);
+
+        for (uint32_t i = 0; i < kNumMacroKnobs; ++i)
+            drawKnob(macro[i], activeKnobGroup == 0 && activeKnobIndex == (int)i);
+    }
+
+    // Bottom-right: grains (hero knobs)
+    {
+        const float colY = stripY;
+        const float colH = stripH;
+
+        beginPath();
+        roundedRect(colX, colY, colW, colH, 14.0f);
+        fillColor(T.panel[0], T.panel[1], T.panel[2]);
+        fill();
+        strokeColor(T.stroke[0], T.stroke[1], T.stroke[2]);
+        strokeWidth(1.0f);
+        stroke();
+
+        fontSize(10.5f);
+        fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
+        textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
+        text(colX + 18.0f, colY + 14.0f, "GRAINS", nullptr);
+
+        for (uint32_t i = 0; i < kNumHeroKnobs; ++i)
+        {
+            drawKnob(hero[i], activeKnobGroup == 1 && activeKnobIndex == (int)i);
+            const float bx = hero[i].x + hero[i].r + 8.0f;
+            const float by = hero[i].y - hero[i].r - 2.0f;
+            drawModSlotsForParam(hero[i].param, bx, by);
+        }
     }
 
     // bottom strip panel
-    const float stripY = waveY + waveH + 18.0f;
-    const float stripH = getHeight() - stripY - 18.0f;
     beginPath();
-    roundedRect(waveX, stripY, getWidth() - 36.0f, stripH, 14.0f);
+    // Left-bottom strip only (don't cover the right control panels)
+    roundedRect(waveX, stripY, waveW, stripH, 14.0f);
     fillColor(T.panel[0], T.panel[1], T.panel[2]);
     fill();
     strokeColor(T.stroke[0], T.stroke[1], T.stroke[2]);
