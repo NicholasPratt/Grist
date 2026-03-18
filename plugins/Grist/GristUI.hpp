@@ -41,13 +41,55 @@ private:
         bool isBipolar;
     };
 
-    static constexpr uint32_t kNumSliders = 11;
-    // Simple buttons
+    // New UI is knob-based; we keep sliders temporarily for params that haven't been migrated.
+
+    enum class Tab : uint8_t { Perform = 0, XY };
+    Tab tab = Tab::Perform;
+
+    struct Knob {
+        float x, y, r;
+        uint32_t param;
+        float minV, maxV;
+        float defV;
+        const char* label;
+        const char* unit;
+        bool bipolar;
+        float value; // cached
+    };
+
+    // Buttons
     float btnX, btnY, btnW, btnH;      // reload
-    float btn2X, btn2Y, btn2W, btn2H;  // hint
+    float btn2X, btn2Y, btn2W, btn2H;  // load
+    float tabX, tabY, tabW, tabH;
+
     char sampleLabel[120];
-    Slider sliders[kNumSliders];
-    int active;
+
+    // Knobs on PERFORM
+    static constexpr uint32_t kNumMacroKnobs = 4;
+    static constexpr uint32_t kNumHeroKnobs  = 5;
+    static constexpr uint32_t kNumSmallKnobs = 6;
+
+    Knob macro[kNumMacroKnobs];
+    Knob hero[kNumHeroKnobs];
+    Knob small[kNumSmallKnobs];
+
+    int activeKnobGroup = -1; // 0=macro,1=hero,2=small
+    int activeKnobIndex = -1;
+    float knobDragStartY = 0.0f;
+    float knobDragStartValue = 0.0f;
+
+    // XY tab
+    float xyX = 0.0f, xyY = 0.0f, xyW = 0.0f, xyH = 0.0f;
+    bool xyActive = false;
+
+    void initKnobs();
+    void layoutPerform();
+    void layoutXY();
+    void setParamFromValue(uint32_t param, float v);
+    bool hitTestKnob(float x, float y, int& outGroup, int& outIndex) const;
+    void drawKnob(const Knob& k, bool active);
+    void drawModSlotsForParam(uint32_t param, float x, float y);
+    void drawTabButton(float x, float y, float w, float h, const char* label, bool on);
 
     // --- modulation UI (slot boxes) ---
     enum class ModSource : uint8_t {
