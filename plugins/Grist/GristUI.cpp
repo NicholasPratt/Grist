@@ -168,7 +168,7 @@ void GristUI::initKnobs()
 
     const float heroR = 20.0f;
     const float heroGapY = 10.0f;
-    const float heroGapX = 34.0f;
+    const float heroGapX = 64.0f; // spread columns
     const float heroTop = stripY + 32.0f + heroR;
     const float heroLeft = colX + 18.0f + heroR;
 
@@ -644,7 +644,7 @@ void GristUI::drawTabButton(float x, float y, float w, float h, const char* labe
     fontSize(12.0f);
     fillColor(on ? T.accent[0] : T.textMuted[0], on ? T.accent[1] : T.textMuted[1], on ? T.accent[2] : T.textMuted[2]);
     textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
-    text(x + w*0.5f, y + h*0.5f + 0.5f, label, nullptr);
+    text(x + w*0.5f, y + h*0.5f - 1.5f, label, nullptr);
 }
 
 void GristUI::drawKnob(const Knob& k, bool active)
@@ -702,10 +702,12 @@ void GristUI::drawKnob(const Knob& k, bool active)
     fill();
 
     // label + value
-    fontSize(11.5f);
+    // label
+    const float labelY = k.y + k.r + (k.r >= 20.0f ? 18.0f : 20.0f);
+    fontSize(k.r >= 20.0f ? 12.5f : 11.5f);
     fillColor(T.text[0], T.text[1], T.text[2]);
     textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
-    text(k.x, k.y + k.r + 20.0f, k.label, nullptr);
+    text(k.x, labelY, k.label, nullptr);
 
     char buf[32];
     if (k.unit && k.unit[0] != '\0')
@@ -713,9 +715,9 @@ void GristUI::drawKnob(const Knob& k, bool active)
     else
         std::snprintf(buf, sizeof(buf), "%.2f", k.value);
 
-    fontSize(10.5f);
+    fontSize(k.r >= 20.0f ? 11.0f : 10.5f);
     fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
-    text(k.x, k.y + k.r + 34.0f, buf, nullptr);
+    text(k.x, labelY + 14.0f, buf, nullptr);
 }
 
 void GristUI::onNanoDisplay()
@@ -738,11 +740,11 @@ void GristUI::onNanoDisplay()
     fontSize(20.0f);
     fillColor(T.accent[0], T.accent[1], T.accent[2]);
     textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
-    text(18.0f, 46.0f, "GRIST", nullptr);
+    text(18.0f, 36.0f, "GRIST", nullptr);
 
     fontSize(11.0f);
     fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
-    text(88.0f, 46.0f, "granular synth", nullptr);
+    text(88.0f, 36.0f, "granular synth", nullptr);
 
     // tabs
     drawTabButton(tabX, tabY, tabW, tabH, "PERFORM", tab == Tab::Perform);
@@ -768,7 +770,7 @@ void GristUI::onNanoDisplay()
         fontSize(12.0f);
         fillColor(T.text[0], T.text[1], T.text[2]);
         textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
-        text(x + w*0.5f, y + h*0.5f, label, nullptr);
+        text(x + w*0.5f, y + h*0.5f - 1.5f, label, nullptr);
     };
 
     drawButton(btn2X, btn2Y, btn2W, btn2H, "Load sample…");
@@ -778,7 +780,7 @@ void GristUI::onNanoDisplay()
     fontSize(11.0f);
     fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
     textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
-    text(18.0f, 58.0f, sampleLabel, nullptr);
+    text(18.0f, 50.0f, sampleLabel, nullptr);
 
     if (tab == Tab::XY)
     {
