@@ -67,13 +67,15 @@ private:
     // Knobs on PERFORM
     static constexpr uint32_t kNumMacroKnobs = 2;
     static constexpr uint32_t kNumHeroKnobs  = 5;
-    static constexpr uint32_t kNumSmallKnobs = 6;
+    static constexpr uint32_t kNumSmallKnobs = 6; // AMP/ENV
+    static constexpr uint32_t kNumLfoKnobs = 4;   // LFO1 rate/shape, LFO2 rate/shape
 
     Knob macro[kNumMacroKnobs];
     Knob hero[kNumHeroKnobs];
     Knob small[kNumSmallKnobs];
+    Knob lfo[kNumLfoKnobs];
 
-    int activeKnobGroup = -1; // 0=macro,1=hero,2=small
+    int activeKnobGroup = -1; // 0=macro,1=hero,2=small,3=lfo
     int activeKnobIndex = -1;
     float knobDragStartY = 0.0f;
     float knobDragStartValue = 0.0f;
@@ -90,6 +92,7 @@ private:
     void setParamFromValue(uint32_t param, float v);
     bool hitTestKnob(float x, float y, int& outGroup, int& outIndex) const;
     void drawKnob(const Knob& k, bool active);
+    void formatKnobValue(const Knob& k, char* buf, size_t bufSize) const;
     void drawModSlotsForParam(uint32_t param, float x, float y);
     void drawTabButton(float x, float y, float w, float h, const char* label, bool on);
 

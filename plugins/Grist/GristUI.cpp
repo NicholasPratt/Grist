@@ -96,7 +96,7 @@ void GristUI::layoutWaveArea()
     waveX = 18.0f;
     waveY = 60.0f;
     waveW = 620.0f;
-    waveH = 160.0f;
+    waveH = 200.0f;
 }
 
 void GristUI::layoutPerform()
@@ -122,8 +122,8 @@ void GristUI::layoutPerform()
     // Reposition waveform area to fill left side (leave room for right control column)
     waveX = 18.0f;
     waveY = 60.0f;
-    waveW = getWidth() - 18.0f - 18.0f - 300.0f;
-    waveH = 160.0f;
+    waveW = getWidth() - 18.0f - 18.0f - 320.0f;
+    waveH = 200.0f;
 }
 
 void GristUI::layoutXY()
@@ -182,7 +182,7 @@ void GristUI::initKnobs()
     const float startX = waveX + 18.0f + smallR;
     const float gapX = 24.0f;
 
-    const struct { uint32_t p; float minV; float maxV; float defV; const char* label; const char* unit; bool bipolar; } sdefs[6] = {
+    const struct { uint32_t p; float minV; float maxV; float defV; const char* label; const char* unit; bool bipolar; } sdefs[kNumSmallKnobs] = {
         { kParamGain,           0.0f, 2.0f,    1.0f,  "GAIN", "", false },
         { kParamAttackMs,       0.0f, 2000.0f, 5.0f,  "ATK",  "ms", false },
         { kParamReleaseMs,      5.0f, 5000.0f, 120.0f,"REL",  "ms", false },
@@ -191,21 +191,35 @@ void GristUI::initKnobs()
         { kParamRandomPitch,    0.0f, 12.0f,   0.0f,  "RND",  "st", false },
     };
 
-    for (uint32_t i = 0; i < 6; ++i)
+    for (uint32_t i = 0; i < kNumSmallKnobs; ++i)
     {
         const float cx = startX + i * (smallR * 2.0f + gapX);
         const float cy = stripY + stripH * 0.5f;
         small[i] = { cx, cy, smallR, sdefs[i].p, sdefs[i].minV, sdefs[i].maxV, sdefs[i].defV, sdefs[i].label, sdefs[i].unit, sdefs[i].bipolar, sdefs[i].defV };
     }
 
-    // Hero knobs (GRAINS) — same size as small knobs, centered in the right-side area
+    // LFO knobs (MOD section) — small knobs
+    const struct { uint32_t p; float minV; float maxV; float defV; const char* label; const char* unit; bool bipolar; } ldefs[kNumLfoKnobs] = {
+        { kParamLfo1RateHz, 0.01f, 20.0f, 0.25f, "LFO1", "Hz", false },
+        { kParamLfo1Shape,  0.0f,  4.0f,  0.0f,  "SHAPE", "", false },
+        { kParamLfo2RateHz, 0.01f, 20.0f, 0.10f, "LFO2", "Hz", false },
+        { kParamLfo2Shape,  0.0f,  4.0f,  0.0f,  "SHAPE", "", false },
+    };
+
+    // Place LFO knobs after AMP/ENV knobs.
+    const float lfoStartX = startX + kNumSmallKnobs * (smallR * 2.0f + gapX) + 40.0f;
+    for (uint32_t i = 0; i < kNumLfoKnobs; ++i)
+    {
+        const float cx = lfoStartX + i * (smallR * 2.0f + gapX);
+        const float cy = stripY + stripH * 0.5f;
+        lfo[i] = { cx, cy, smallR, ldefs[i].p, ldefs[i].minV, ldefs[i].maxV, ldefs[i].defV, ldefs[i].label, ldefs[i].unit, ldefs[i].bipolar, ldefs[i].defV };
+    }
+
+    // Hero knobs (GRAINS) — small size, placed after LFOs
     const float heroR = smallR;
     const float heroGapX = 24.0f;
     const float heroY = stripY + stripH * 0.5f;
-    const float rightAreaX = colX;
-    const float rightAreaW = getWidth() - 18.0f - rightAreaX;
-    const float rowW = kNumHeroKnobs * (heroR * 2.0f) + (kNumHeroKnobs - 1) * heroGapX;
-    const float heroStartX = rightAreaX + (rightAreaW - rowW) * 0.5f + heroR;
+    const float heroStartX = lfoStartX + kNumLfoKnobs * (smallR * 2.0f + gapX) + 50.0f;
 
     for (uint32_t i = 0; i < kNumHeroKnobs; ++i)
     {
@@ -218,6 +232,7 @@ void GristUI::initKnobs()
     for (uint32_t i = 0; i < kNumMacroKnobs; ++i) macro[i].value = macro[i].defV;
     for (uint32_t i = 0; i < kNumHeroKnobs; ++i)  hero[i].value = hero[i].defV;
     for (uint32_t i = 0; i < kNumSmallKnobs; ++i) small[i].value = small[i].defV;
+    for (uint32_t i = 0; i < kNumLfoKnobs; ++i)   lfo[i].value = lfo[i].defV;
 }
 
 void GristUI::setParamFromValue(uint32_t param, float v)
@@ -245,6 +260,7 @@ bool GristUI::hitTestKnob(float x, float y, int& outGroup, int& outIndex) const
     if (hit(macro, kNumMacroKnobs, 0)) return true;
     if (hit(hero,  kNumHeroKnobs,  1)) return true;
     if (hit(small, kNumSmallKnobs, 2)) return true;
+    if (hit(lfo,   kNumLfoKnobs,   3)) return true;
     return false;
 }
 
@@ -342,6 +358,7 @@ void GristUI::parameterChanged(uint32_t index, float value)
     upd(macro, kNumMacroKnobs);
     upd(hero,  kNumHeroKnobs);
     upd(small, kNumSmallKnobs);
+    upd(lfo,   kNumLfoKnobs);
 
     repaint();
 }
@@ -557,7 +574,7 @@ bool GristUI::onMouse(const MouseEvent& ev)
             activeKnobIndex = k;
             knobDragStartY = my;
 
-            Knob* kk = (g == 0) ? &macro[k] : (g == 1) ? &hero[k] : &small[k];
+            Knob* kk = (g == 0) ? &macro[k] : (g == 1) ? &hero[k] : (g == 2) ? &small[k] : &lfo[k];
             knobDragStartValue = kk->value;
             repaint();
             return true;
@@ -609,7 +626,10 @@ bool GristUI::onMotion(const MotionEvent& ev)
     // knob drag
     if (activeKnobGroup >= 0 && activeKnobIndex >= 0)
     {
-        Knob* kk = (activeKnobGroup == 0) ? &macro[activeKnobIndex] : (activeKnobGroup == 1) ? &hero[activeKnobIndex] : &small[activeKnobIndex];
+        Knob* kk = (activeKnobGroup == 0) ? &macro[activeKnobIndex]
+                 : (activeKnobGroup == 1) ? &hero[activeKnobIndex]
+                 : (activeKnobGroup == 2) ? &small[activeKnobIndex]
+                 : &lfo[activeKnobIndex];
 
         const float dy = (knobDragStartY - my);
         // scaled by range; 160 px for full sweep
@@ -651,6 +671,26 @@ void GristUI::drawTabButton(float x, float y, float w, float h, const char* labe
     fillColor(on ? T.accent[0] : T.textMuted[0], on ? T.accent[1] : T.textMuted[1], on ? T.accent[2] : T.textMuted[2]);
     textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
     text(x + w*0.5f, y + h*0.5f - 3.0f, label, nullptr);
+}
+
+void GristUI::formatKnobValue(const Knob& k, char* buf, size_t bufSize) const
+{
+    if (!buf || bufSize == 0) return;
+
+    // Discrete labels for LFO shape
+    if (k.param == kParamLfo1Shape || k.param == kParamLfo2Shape)
+    {
+        static const char* shapes[] = { "SINE", "TRI", "SAW", "SQR", "S&H" };
+        const int idx = (int)std::lround(k.value);
+        const int clamped = std::max(0, std::min(4, idx));
+        std::snprintf(buf, bufSize, "%s", shapes[clamped]);
+        return;
+    }
+
+    if (k.unit && k.unit[0] != '\0')
+        std::snprintf(buf, bufSize, "%.2g %s", k.value, k.unit);
+    else
+        std::snprintf(buf, bufSize, "%.2f", k.value);
 }
 
 void GristUI::drawKnob(const Knob& k, bool active)
@@ -716,10 +756,7 @@ void GristUI::drawKnob(const Knob& k, bool active)
     text(k.x, labelY, k.label, nullptr);
 
     char buf[32];
-    if (k.unit && k.unit[0] != '\0')
-        std::snprintf(buf, sizeof(buf), "%.1f %s", k.value, k.unit);
-    else
-        std::snprintf(buf, sizeof(buf), "%.2f", k.value);
+    formatKnobValue(k, buf, sizeof(buf));
 
     fontSize(k.r >= 20.0f ? 11.0f : 10.5f);
     fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
@@ -1040,6 +1077,15 @@ void GristUI::onNanoDisplay()
 
     for (uint32_t i = 0; i < kNumSmallKnobs; ++i)
         drawKnob(small[i], activeKnobGroup == 2 && activeKnobIndex == (int)i);
+
+    // MOD section (LFOs)
+    fontSize(10.5f);
+    fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
+    textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
+    text(lfo[0].x - lfo[0].r, stripY + 14.0f, "MOD", nullptr);
+
+    for (uint32_t i = 0; i < kNumLfoKnobs; ++i)
+        drawKnob(lfo[i], activeKnobGroup == 3 && activeKnobIndex == (int)i);
 
     for (uint32_t i = 0; i < kNumHeroKnobs; ++i)
     {
