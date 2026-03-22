@@ -312,7 +312,8 @@ void Grist::setState(const char* key, const char* value)
         previewEnd = std::max(lo + 1.0, hi);
         previewInc = (double)s->sampleRate / fSampleRate;
         previewActive = true;
-        previewDecim = 0;
+        // Force an immediate playhead publish on next audio block.
+        previewDecim = (uint32_t)std::max(1.0, fSampleRate / 30.0);
         return;
     }
 
@@ -968,6 +969,8 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
                 if (pPos >= stopPos)
                 {
                     pActive = false;
+                    // publish stop immediately
+                    updateStateValue("playhead", "");
                     break;
                 }
 
