@@ -73,6 +73,10 @@ private:
 
     float fMacro[8];
 
+    // Sample range selection (normalized 0..1)
+    float fSampleStart01;
+    float fSampleEnd01;
+
     // Runtime
     double fSampleRate;
     bool gateOn;

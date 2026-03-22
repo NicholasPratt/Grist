@@ -353,6 +353,9 @@ void GristUI::parameterChanged(uint32_t index, float value)
     if (index == kParamX) xVal = fclampf(value, -1.0f, 1.0f);
     if (index == kParamY) yVal = fclampf(value, -1.0f, 1.0f);
 
+    if (index == kParamSampleStart) sampleStart01 = fclampf(value / 100.0f, 0.0f, 1.0f);
+    if (index == kParamSampleEnd)   sampleEnd01   = fclampf(value / 100.0f, 0.0f, 1.0f);
+
     auto upd = [&](Knob* ks, uint32_t n) {
         for (uint32_t i = 0; i < n; ++i)
             if (ks[i].param == index)
@@ -595,6 +598,32 @@ bool GristUI::onMouse(const MouseEvent& ev)
             return false;
         }
 
+        // PERFORM: waveform range drag handles
+        {
+            const float innerX = waveX + 10.0f;
+            const float innerW = waveW - 20.0f;
+            const float x0 = innerX + sampleStart01 * innerW;
+            const float x1 = innerX + sampleEnd01 * innerW;
+
+            const float hitPad = 8.0f;
+            const bool inWave = (mx >= waveX && mx <= waveX + waveW && my >= waveY && my <= waveY + waveH);
+            if (inWave)
+            {
+                if (std::fabs(mx - x0) <= hitPad)
+                {
+                    waveDragMode = 1;
+                    repaint();
+                    return true;
+                }
+                if (std::fabs(mx - x1) <= hitPad)
+                {
+                    waveDragMode = 2;
+                    repaint();
+                    return true;
+                }
+            }
+        }
+
         // PERFORM: mod boxes
         {
             int mt = -1, ms = -1;
@@ -637,6 +666,7 @@ bool GristUI::onMouse(const MouseEvent& ev)
         activeKnobIndex = -1;
         modDragTarget = -1;
         modDragSlot = -1;
+        waveDragMode = 0;
         xyActive = false;
     }
 
@@ -657,6 +687,31 @@ bool GristUI::onMotion(const MotionEvent& ev)
         const float yv = (1.0f - ny) * 2.0f - 1.0f;
         setParamFromValue(kParamX, xv);
         setParamFromValue(kParamY, yv);
+        repaint();
+        return true;
+    }
+
+    // Waveform range drag
+    if (waveDragMode != 0)
+    {
+        const float innerX = waveX + 10.0f;
+        const float innerW = waveW - 20.0f;
+        const float n = fclampf((mx - innerX) / innerW, 0.0f, 1.0f);
+        const float minSpan = 0.001f;
+
+        if (waveDragMode == 1)
+        {
+            const float v = std::min(n, sampleEnd01 - minSpan);
+            sampleStart01 = fclampf(v, 0.0f, 1.0f);
+            setParamFromValue(kParamSampleStart, sampleStart01 * 100.0f);
+        }
+        else if (waveDragMode == 2)
+        {
+            const float v = std::max(n, sampleStart01 + minSpan);
+            sampleEnd01 = fclampf(v, 0.0f, 1.0f);
+            setParamFromValue(kParamSampleEnd, sampleEnd01 * 100.0f);
+        }
+
         repaint();
         return true;
     }
@@ -1002,6 +1057,54 @@ void GristUI::onNanoDisplay()
     strokeColor(0.16f, 0.16f, 0.17f);
     strokeWidth(1.0f);
     stroke();
+
+    // selection range overlay + handles
+    {
+        const float innerX = waveX + 10.0f;
+        const float innerW = waveW - 20.0f;
+        const float a = fclampf(sampleStart01, 0.0f, 1.0f);
+        const float b = fclampf(sampleEnd01, 0.0f, 1.0f);
+        const float lo = std::min(a, b);
+        const float hi = std::max(a, b);
+
+        const float selX = innerX + lo * innerW;
+        const float selW = (hi - lo) * innerW;
+
+        // dim outside region
+        beginPath();
+        rect(innerX, waveY + 10.0f, selX - innerX, waveH - 20.0f);
+        fillColor(0.0f, 0.0f, 0.0f, 0.20f);
+        fill();
+        beginPath();
+        rect(selX + selW, waveY + 10.0f, innerX + innerW - (selX + selW), waveH - 20.0f);
+        fillColor(0.0f, 0.0f, 0.0f, 0.20f);
+        fill();
+
+        // highlight region
+        beginPath();
+        rect(selX, waveY + 10.0f, selW, waveH - 20.0f);
+        fillColor(0.30f, 0.55f, 0.95f, 0.06f);
+        fill();
+
+        // handles
+        const float hx0 = innerX + lo * innerW;
+        const float hx1 = innerX + hi * innerW;
+        for (int i = 0; i < 2; ++i)
+        {
+            const float hx = (i == 0) ? hx0 : hx1;
+            beginPath();
+            moveTo(hx, waveY + 8.0f);
+            lineTo(hx, waveY + waveH - 8.0f);
+            strokeColor(0.35f, 0.65f, 1.0f, 0.85f);
+            strokeWidth(2.0f);
+            stroke();
+
+            beginPath();
+            roundedRect(hx - 7.0f, waveY + 10.0f, 14.0f, 18.0f, 4.0f);
+            fillColor(0.35f, 0.65f, 1.0f, 0.90f);
+            fill();
+        }
+    }
 
     // waveform peaks
     if (!waveMin.empty() && waveMin.size() == waveMax.size())

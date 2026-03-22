@@ -69,6 +69,10 @@ enum Parameters {
     kParamMacro7,
     kParamMacro8,
 
+    // Sample selection range (normalized 0..1, start <= end)
+    kParamSampleStart,
+    kParamSampleEnd,
+
     kParamCount
 };
 

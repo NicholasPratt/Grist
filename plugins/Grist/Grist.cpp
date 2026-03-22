@@ -66,6 +66,8 @@ Grist::Grist()
       fLfo2Shape(0.0f),
       fX(0.0f),
       fY(0.0f),
+      fSampleStart01(0.0f),
+      fSampleEnd01(1.0f),
       fSampleRate(48000.0),
       gateOn(false),
       currentNote(60),
@@ -474,6 +476,24 @@ void Grist::initParameter(uint32_t index, Parameter& parameter)
         parameter.ranges.max = 1.0f;
         break;
     }
+
+    case kParamSampleStart:
+        parameter.name = "Sample Start";
+        parameter.symbol = "sample_start";
+        parameter.unit = "%";
+        parameter.ranges.def = 0.0f;
+        parameter.ranges.min = 0.0f;
+        parameter.ranges.max = 100.0f;
+        break;
+
+    case kParamSampleEnd:
+        parameter.name = "Sample End";
+        parameter.symbol = "sample_end";
+        parameter.unit = "%";
+        parameter.ranges.def = 100.0f;
+        parameter.ranges.min = 0.0f;
+        parameter.ranges.max = 100.0f;
+        break;
     }
 }
 
@@ -509,6 +529,8 @@ float Grist::getParameterValue(uint32_t index) const
     case kParamMacro6: return fMacro[5];
     case kParamMacro7: return fMacro[6];
     case kParamMacro8: return fMacro[7];
+    case kParamSampleStart: return fSampleStart01 * 100.0f;
+    case kParamSampleEnd: return fSampleEnd01 * 100.0f;
 
     default: return 0.0f;
     }
@@ -586,6 +608,20 @@ void Grist::setParameterValue(uint32_t index, float value)
     case kParamMacro6: fMacro[5] = fclampf(value, -1.0f, 1.0f); break;
     case kParamMacro7: fMacro[6] = fclampf(value, -1.0f, 1.0f); break;
     case kParamMacro8: fMacro[7] = fclampf(value, -1.0f, 1.0f); break;
+
+    case kParamSampleStart:
+    {
+        const float v = fclampf(value / 100.0f, 0.0f, 1.0f);
+        fSampleStart01 = std::min(v, fSampleEnd01);
+        break;
+    }
+
+    case kParamSampleEnd:
+    {
+        const float v = fclampf(value / 100.0f, 0.0f, 1.0f);
+        fSampleEnd01 = std::max(v, fSampleStart01);
+        break;
+    }
     }
 }
 
@@ -1099,7 +1135,16 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
                         const uint32_t gDur = (uint32_t)std::max(8.0, gDurSec * (double)s->sampleRate);
 
                         const float rr = rngFloat01() * 2.0f - 1.0f; // -1..1
-                        const float pos01 = fclampf(center + rr * spray, 0.0f, 1.0f);
+                        float pos01 = fclampf(center + rr * spray, 0.0f, 1.0f);
+
+                        // Apply sample range selection.
+                        const float a = fclampf(fSampleStart01, 0.0f, 1.0f);
+                        const float b = fclampf(fSampleEnd01,   0.0f, 1.0f);
+                        const float lo = std::min(a, b);
+                        const float hi = std::max(a, b);
+                        const float span = std::max(1e-6f, hi - lo);
+                        pos01 = lo + pos01 * span;
+
                         const double start = (double)pos01 * (double)(len - 2);
 
                         const double noteMul = midiNoteToHz(voice.note) / midiNoteToHz(60);

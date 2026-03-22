@@ -153,6 +153,11 @@ private:
     std::vector<float> waveMin; // per-column min
     std::vector<float> waveMax; // per-column max
 
+    // Sample range selection (normalized 0..1)
+    float sampleStart01 = 0.0f;
+    float sampleEnd01 = 1.0f;
+    int waveDragMode = 0; // 0 none, 1 dragging start, 2 dragging end
+
     static constexpr uint32_t kMaxVizGrains = 64;
     float grainPos[kMaxVizGrains];
     uint32_t grainCount = 0;
