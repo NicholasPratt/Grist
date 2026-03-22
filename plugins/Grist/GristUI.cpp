@@ -367,6 +367,47 @@ void GristUI::parameterChanged(uint32_t index, float value)
     repaint();
 }
 
+static inline bool endsWithCaseInsensitiveLocal(const std::string& s, const char* suffix)
+{
+    const size_t sl = s.size();
+    const size_t tl = std::strlen(suffix);
+    if (tl == 0 || sl < tl) return false;
+    for (size_t i = 0; i < tl; ++i)
+    {
+        const char a = (char)std::tolower((unsigned char)s[sl - tl + i]);
+        const char b = (char)std::tolower((unsigned char)suffix[i]);
+        if (a != b) return false;
+    }
+    return true;
+}
+
+static inline int probeSampleRateHz(const std::string& path)
+{
+    if (path.empty()) return 0;
+
+    if (endsWithCaseInsensitiveLocal(path, ".wav") || endsWithCaseInsensitiveLocal(path, ".wave"))
+    {
+        drwav wav;
+        if (!drwav_init_file(&wav, path.c_str(), nullptr))
+            return 0;
+        const int sr = (int)wav.sampleRate;
+        drwav_uninit(&wav);
+        return sr;
+    }
+
+    if (endsWithCaseInsensitiveLocal(path, ".mp3"))
+    {
+        drmp3 mp3;
+        if (!drmp3_init_file(&mp3, path.c_str(), nullptr))
+            return 0;
+        const int sr = (int)mp3.sampleRate;
+        drmp3_uninit(&mp3);
+        return sr;
+    }
+
+    return 0;
+}
+
 void GristUI::stateChanged(const char* key, const char* value)
 {
     if (!key)
@@ -379,7 +420,13 @@ void GristUI::stateChanged(const char* key, const char* value)
             samplePath = value;
             const char* lastSlash = std::strrchr(value, '/');
             const char* name = lastSlash ? (lastSlash + 1) : value;
-            std::snprintf(sampleLabel, sizeof(sampleLabel), "Sample: %s", name);
+
+            const int sr = probeSampleRateHz(samplePath);
+            if (sr > 0)
+                std::snprintf(sampleLabel, sizeof(sampleLabel), "Sample: %s (%d Hz)", name, sr);
+            else
+                std::snprintf(sampleLabel, sizeof(sampleLabel), "Sample: %s", name);
+
             rebuildWavePeaks();
         }
         else

@@ -62,7 +62,7 @@ private:
     float btn2X, btn2Y, btn2W, btn2H;  // load
     float tabX, tabY, tabW, tabH;
 
-    char sampleLabel[120];
+    char sampleLabel[200];
 
     // Knobs on PERFORM
     static constexpr uint32_t kNumMacroKnobs = 2;
