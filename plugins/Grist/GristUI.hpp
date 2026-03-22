@@ -156,7 +156,12 @@ private:
     // Sample range selection (normalized 0..1)
     float sampleStart01 = 0.0f;
     float sampleEnd01 = 1.0f;
-    int waveDragMode = 0; // 0 none, 1 dragging start, 2 dragging end
+    int waveDragMode = 0; // 0 none, 1 dragging start, 2 dragging end, 3 dragging range
+    float waveDragOffset01 = 0.0f;
+    float waveDragSpan01 = 1.0f;
+
+    // double-click detection (DPF MouseEvent doesn't provide click count)
+    uint64_t lastWaveClickMs = 0;
 
     static constexpr uint32_t kMaxVizGrains = 64;
     float grainPos[kMaxVizGrains];

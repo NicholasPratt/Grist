@@ -9,6 +9,8 @@
 #include "GristUI.hpp"
 #include "GristVizBus.hpp"
 
+#include "Application.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -538,6 +540,29 @@ void GristUI::uiFileBrowserSelected(const char* filename)
 
 bool GristUI::onMouse(const MouseEvent& ev)
 {
+    // double-click (left) resets sample range selection
+    if (ev.button == 1 && ev.press)
+    {
+        const float mx = ev.pos.getX();
+        const float my = ev.pos.getY();
+        if (tab == Tab::Perform && mx >= waveX && mx <= waveX + waveW && my >= waveY && my <= waveY + waveH)
+        {
+            const uint64_t nowMs = (uint64_t)(getApp().getTime() * 1000.0);
+            const uint64_t dt = (nowMs >= lastWaveClickMs) ? (nowMs - lastWaveClickMs) : 999999;
+            lastWaveClickMs = nowMs;
+
+            if (dt <= 350)
+            {
+                sampleStart01 = 0.0f;
+                sampleEnd01 = 1.0f;
+                setParamFromValue(kParamSampleStart, 0.0f);
+                setParamFromValue(kParamSampleEnd, 100.0f);
+                repaint();
+                return true;
+            }
+        }
+    }
+
     if (ev.button != 1)
         return false;
 
@@ -598,17 +623,24 @@ bool GristUI::onMouse(const MouseEvent& ev)
             return false;
         }
 
-        // PERFORM: waveform range drag handles
+        // PERFORM: waveform range drag handles / range drag
         {
             const float innerX = waveX + 10.0f;
             const float innerW = waveW - 20.0f;
-            const float x0 = innerX + sampleStart01 * innerW;
-            const float x1 = innerX + sampleEnd01 * innerW;
+
+            const float a = fclampf(sampleStart01, 0.0f, 1.0f);
+            const float b = fclampf(sampleEnd01,   0.0f, 1.0f);
+            const float lo = std::min(a, b);
+            const float hi = std::max(a, b);
+
+            const float x0 = innerX + lo * innerW;
+            const float x1 = innerX + hi * innerW;
 
             const float hitPad = 8.0f;
             const bool inWave = (mx >= waveX && mx <= waveX + waveW && my >= waveY && my <= waveY + waveH);
             if (inWave)
             {
+                // Prefer handle drags.
                 if (std::fabs(mx - x0) <= hitPad)
                 {
                     waveDragMode = 1;
@@ -618,6 +650,17 @@ bool GristUI::onMouse(const MouseEvent& ev)
                 if (std::fabs(mx - x1) <= hitPad)
                 {
                     waveDragMode = 2;
+                    repaint();
+                    return true;
+                }
+
+                // Drag inside range to move whole selection.
+                if (mx >= x0 && mx <= x1)
+                {
+                    waveDragMode = 3;
+                    const float n = fclampf((mx - innerX) / innerW, 0.0f, 1.0f);
+                    waveDragOffset01 = n - lo; // cursor offset from start
+                    waveDragSpan01 = std::max(0.0f, hi - lo);
                     repaint();
                     return true;
                 }
@@ -709,6 +752,27 @@ bool GristUI::onMotion(const MotionEvent& ev)
         {
             const float v = std::max(n, sampleStart01 + minSpan);
             sampleEnd01 = fclampf(v, 0.0f, 1.0f);
+            setParamFromValue(kParamSampleEnd, sampleEnd01 * 100.0f);
+        }
+        else if (waveDragMode == 3)
+        {
+            // Keep span, move both ends.
+            float start = n - waveDragOffset01;
+            start = fclampf(start, 0.0f, 1.0f);
+
+            float end = start + waveDragSpan01;
+            if (end > 1.0f)
+            {
+                end = 1.0f;
+                start = end - waveDragSpan01;
+            }
+
+            if (end - start < minSpan)
+                end = fclampf(start + minSpan, 0.0f, 1.0f);
+
+            sampleStart01 = start;
+            sampleEnd01 = end;
+            setParamFromValue(kParamSampleStart, sampleStart01 * 100.0f);
             setParamFromValue(kParamSampleEnd, sampleEnd01 * 100.0f);
         }
 
