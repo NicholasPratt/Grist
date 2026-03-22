@@ -1367,8 +1367,11 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
                 const double phase = (g.dur > 1) ? ((double)g.age / (double)(g.dur - 1)) : 1.0;
                 const float w = (float)(0.5 - 0.5 * std::cos(twoPi * phase));
 
-                // size normalization: keep energy roughly stable as grain size changes
-                const float norm = 1.0f / std::sqrt(std::max(1.0f, (float)g.dur));
+                // Grain normalization: keep this *musically usable*.
+                // The previous 1/sqrt(dur) energy normalization made typical grains (~60ms)
+                // extremely quiet (e.g. sqrt(2600) ≈ 51 => ~-34dB).
+                // Rely on master gain + soft clip instead.
+                const float norm = 1.0f;
 
                 accL += l * w * norm * g.panL;
                 accR += r * w * norm * g.panR;
