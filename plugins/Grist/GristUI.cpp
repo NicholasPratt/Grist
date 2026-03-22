@@ -14,8 +14,12 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#include <cctype>
 
 #include "DSP/dr_wav.h"
+
+#define DR_MP3_FLOAT_OUTPUT
+#include "DSP/dr_mp3.h"
 
 static inline float fclampf(const float v, const float lo, const float hi)
 {
@@ -1101,8 +1105,22 @@ void GristUI::onNanoDisplay()
 }
 
 // ---------------------------
-// Wave peaks (unchanged)
+// Wave peaks
 // ---------------------------
+
+static inline bool endsWithCaseInsensitiveUI(const std::string& s, const char* suffix)
+{
+    const size_t sl = s.size();
+    const size_t tl = std::strlen(suffix);
+    if (tl == 0 || sl < tl) return false;
+    for (size_t i = 0; i < tl; ++i)
+    {
+        const char a = (char)std::tolower((unsigned char)s[sl - tl + i]);
+        const char b = (char)std::tolower((unsigned char)suffix[i]);
+        if (a != b) return false;
+    }
+    return true;
+}
 
 void GristUI::rebuildWavePeaks()
 {
@@ -1112,60 +1130,142 @@ void GristUI::rebuildWavePeaks()
     if (samplePath.empty() || waveW < 4.0f)
         return;
 
-    drwav wav;
-    if (!drwav_init_file(&wav, samplePath.c_str(), nullptr))
-        return;
-
-    const uint32_t ch = wav.channels;
-    const uint64_t frames = wav.totalPCMFrameCount;
-    if (frames < 2 || ch < 1)
-    {
-        drwav_uninit(&wav);
-        return;
-    }
-
     const uint32_t cols = (uint32_t)std::max(8.0f, std::floor(waveW));
     waveMin.assign(cols, 0.0f);
     waveMax.assign(cols, 0.0f);
 
     const uint32_t chunkFrames = 4096;
-    std::vector<float> buf;
-    buf.resize((size_t)chunkFrames * ch);
 
-    uint64_t frameIndex = 0;
-    bool first = true;
-    while (frameIndex < frames)
+    // WAV path (fast, has exact frame count)
+    if (endsWithCaseInsensitiveUI(samplePath, ".wav") || endsWithCaseInsensitiveUI(samplePath, ".wave"))
     {
-        const uint64_t toRead = std::min<uint64_t>(chunkFrames, frames - frameIndex);
-        const uint64_t got = drwav_read_pcm_frames_f32(&wav, toRead, buf.data());
-        if (got == 0)
-            break;
+        drwav wav;
+        if (!drwav_init_file(&wav, samplePath.c_str(), nullptr))
+            return;
 
-        for (uint64_t i = 0; i < got; ++i)
+        const uint32_t ch = wav.channels;
+        const uint64_t frames = wav.totalPCMFrameCount;
+        if (frames < 2 || ch < 1)
         {
-            float s = buf[(size_t)i * ch];
-            if (ch > 1)
-                s = 0.5f * (s + buf[(size_t)i * ch + 1]);
-
-            const uint64_t global = frameIndex + i;
-            const uint32_t col = (uint32_t)std::min<uint64_t>(cols - 1, (global * cols) / frames);
-            if (first)
-            {
-                waveMin[col] = s;
-                waveMax[col] = s;
-            }
-            else
-            {
-                waveMin[col] = std::min(waveMin[col], s);
-                waveMax[col] = std::max(waveMax[col], s);
-            }
-            first = false;
+            drwav_uninit(&wav);
+            return;
         }
 
-        frameIndex += got;
+        std::vector<float> buf;
+        buf.resize((size_t)chunkFrames * ch);
+
+        uint64_t frameIndex = 0;
+        bool first = true;
+        while (frameIndex < frames)
+        {
+            const uint64_t toRead = std::min<uint64_t>(chunkFrames, frames - frameIndex);
+            const uint64_t got = drwav_read_pcm_frames_f32(&wav, toRead, buf.data());
+            if (got == 0)
+                break;
+
+            for (uint64_t i = 0; i < got; ++i)
+            {
+                float s = buf[(size_t)i * ch];
+                if (ch > 1)
+                    s = 0.5f * (s + buf[(size_t)i * ch + 1]);
+
+                const uint64_t global = frameIndex + i;
+                const uint32_t col = (uint32_t)std::min<uint64_t>(cols - 1, (global * cols) / frames);
+                if (first)
+                {
+                    waveMin[col] = s;
+                    waveMax[col] = s;
+                }
+                else
+                {
+                    waveMin[col] = std::min(waveMin[col], s);
+                    waveMax[col] = std::max(waveMax[col], s);
+                }
+                first = false;
+            }
+
+            frameIndex += got;
+        }
+
+        drwav_uninit(&wav);
+        return;
     }
 
-    drwav_uninit(&wav);
+    // MP3 path (frame count can be unknown; still OK for peaks)
+    if (endsWithCaseInsensitiveUI(samplePath, ".mp3"))
+    {
+        drmp3 mp3;
+        if (!drmp3_init_file(&mp3, samplePath.c_str(), nullptr))
+            return;
+
+        const uint32_t ch = mp3.channels;
+        if (ch < 1)
+        {
+            drmp3_uninit(&mp3);
+            return;
+        }
+
+        drmp3_uint64 frames = drmp3_get_pcm_frame_count(&mp3);
+        if (frames == 0 || frames == DRMP3_UINT64_MAX)
+        {
+            // Fallback: count frames by decoding once, then re-open and build peaks.
+            std::vector<float> tmp;
+            tmp.resize((size_t)chunkFrames * ch);
+            drmp3_uint64 total = 0;
+            for (;;)
+            {
+                const drmp3_uint64 got = drmp3_read_pcm_frames_f32(&mp3, chunkFrames, tmp.data());
+                if (got == 0) break;
+                total += got;
+            }
+            drmp3_uninit(&mp3);
+            if (!drmp3_init_file(&mp3, samplePath.c_str(), nullptr))
+                return;
+            frames = total;
+        }
+
+        std::vector<float> buf;
+        buf.resize((size_t)chunkFrames * ch);
+
+        bool first = true;
+        drmp3_uint64 frameIndex = 0;
+        while (true)
+        {
+            const drmp3_uint64 got = drmp3_read_pcm_frames_f32(&mp3, chunkFrames, buf.data());
+            if (got == 0)
+                break;
+
+            for (drmp3_uint64 i = 0; i < got; ++i)
+            {
+                float s = buf[(size_t)i * ch];
+                if (ch > 1)
+                    s = 0.5f * (s + buf[(size_t)i * ch + 1]);
+
+                const drmp3_uint64 global = frameIndex + i;
+
+                const uint32_t col = (uint32_t)std::min<drmp3_uint64>(cols - 1, (global * cols) / frames);
+
+                if (first)
+                {
+                    waveMin[col] = s;
+                    waveMax[col] = s;
+                }
+                else
+                {
+                    waveMin[col] = std::min(waveMin[col], s);
+                    waveMax[col] = std::max(waveMax[col], s);
+                }
+                first = false;
+            }
+
+            frameIndex += got;
+        }
+
+        drmp3_uninit(&mp3);
+        return;
+    }
+
+    // Unknown format: leave blank.
 }
 
 // ---------------------------
