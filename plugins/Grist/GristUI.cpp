@@ -72,7 +72,8 @@ static const Theme T;
 GristUI::GristUI()
     : UI(DISTRHO_UI_DEFAULT_WIDTH, DISTRHO_UI_DEFAULT_HEIGHT),
       btnX(0.0f), btnY(14.0f), btnW(0.0f), btnH(30.0f),
-      btn2X(18.0f), btn2Y(14.0f), btn2W(220.0f), btn2H(30.0f)
+      btn2X(18.0f), btn2Y(14.0f), btn2W(220.0f), btn2H(30.0f),
+      btnPlayX(0.0f), btnPlayY(14.0f), btnPlayW(88.0f), btnPlayH(30.0f)
 {
     tabX = 18.0f;
     tabY = 14.0f;
@@ -118,6 +119,12 @@ void GristUI::layoutPerform()
     btn2Y = tabY;
     btn2W = 160.0f;
     btn2H = tabH;
+
+    // Preview play/stop button
+    btnPlayW = 92.0f;
+    btnPlayH = tabH;
+    btnPlayX = btn2X + btn2W + 10.0f;
+    btnPlayY = tabY;
 
     // Reload on right
     btnW = 190.0f;
@@ -616,6 +623,32 @@ bool GristUI::onMouse(const MouseEvent& ev)
             return true;
         }
 
+        // Preview play/stop
+        if (mx >= btnPlayX && mx <= btnPlayX + btnPlayW && my >= btnPlayY && my <= btnPlayY + btnPlayH)
+        {
+            const float a = fclampf(sampleStart01, 0.0f, 1.0f);
+            const float b = fclampf(sampleEnd01,   0.0f, 1.0f);
+            const float lo = std::min(a, b);
+            const float hi = std::max(a, b);
+
+            if (previewOn)
+            {
+                setState("preview", "stop");
+                playhead01 = -1.0f;
+                previewOn = false;
+            }
+            else
+            {
+                char buf[64];
+                std::snprintf(buf, sizeof(buf), "%.4f,%.4f", lo, hi);
+                setState("preview", buf);
+                previewOn = true;
+                playhead01 = lo;
+            }
+            repaint();
+            return true;
+        }
+
         // Reload default
         if (mx >= btnX && mx <= btnX + btnW && my >= btnY && my <= btnY + btnH)
         {
@@ -1061,6 +1094,7 @@ void GristUI::onNanoDisplay()
     };
 
     drawButton(btn2X, btn2Y, btn2W, btn2H, "Load sample…");
+    drawButton(btnPlayX, btnPlayY, btnPlayW, btnPlayH, previewOn ? "Stop" : "Play");
     drawButton(btnX, btnY, btnW, btnH, "Reload default");
 
     // sample label

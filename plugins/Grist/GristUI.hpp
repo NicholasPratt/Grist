@@ -60,6 +60,7 @@ private:
     // Buttons
     float btnX, btnY, btnW, btnH;      // reload
     float btn2X, btn2Y, btn2W, btn2H;  // load
+    float btnPlayX, btnPlayY, btnPlayW, btnPlayH; // preview play/stop
     float tabX, tabY, tabW, tabH;
 
     char sampleLabel[200];
