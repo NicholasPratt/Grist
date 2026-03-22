@@ -47,7 +47,7 @@ static inline float catmullRom(const float y0, const float y1, const float y2, c
 
 Grist::Grist()
     : Plugin(kParamCount, 0, 8), // params, programs, states
-      fGain(0.8f),
+      fGain(1.5f),
       fGrainSizeMs(60.0f),
       fDensity(20.0f),
       fPosition(0.5f),
@@ -363,11 +363,10 @@ void Grist::initParameter(uint32_t index, Parameter& parameter)
     case kParamGain:
         parameter.name = "Gain";
         parameter.symbol = "gain";
-        // Allow boosting above unity to make the instrument feel less quiet.
-        // Note: values > 1.0 can clip depending on host levels.
-        parameter.ranges.def = 1.0f;
+        // Allow boosting above unity. We'll soft-limit at the output to avoid nasty clipping.
+        parameter.ranges.def = 1.5f;
         parameter.ranges.min = 0.0f;
-        parameter.ranges.max = 2.0f;
+        parameter.ranges.max = 6.0f;
         break;
 
     case kParamGrainSizeMs:
@@ -1385,6 +1384,10 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
 
         outL[i] += mixL;
         outR[i] += mixR;
+
+        // Gentle output soft-clip (keeps boost usable without harsh clipping)
+        outL[i] = std::tanh(outL[i]);
+        outR[i] = std::tanh(outR[i]);
     }
 
     // Publish grain viz to UI at ~30 Hz (best-effort).
