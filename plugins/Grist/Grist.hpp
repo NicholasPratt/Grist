@@ -183,7 +183,9 @@ private:
     uint32_t vizDecim = 0;
 
     double midiNoteToHz(int note) const;
+    bool loadAudioFile(const char* path);
     bool loadWavFile(const char* path);
+    bool loadMp3File(const char* path);
     bool loadDefaultSample();
 
     // Non-RT load diagnostics (used to report failures to UI)

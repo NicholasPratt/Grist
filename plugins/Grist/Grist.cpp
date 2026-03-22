@@ -12,11 +12,16 @@
 #define DR_WAV_IMPLEMENTATION
 #include "DSP/dr_wav.h"
 
+#define DR_MP3_IMPLEMENTATION
+#define DR_MP3_FLOAT_OUTPUT
+#include "DSP/dr_mp3.h"
+
 #include <cmath>
 #include <algorithm>
 #include <cstring>
 #include <cstdlib>
 #include <cstdio>
+#include <cctype>
 
 #include <string>
 
@@ -258,7 +263,7 @@ void Grist::setState(const char* key, const char* value)
     }
     else
     {
-        ok = loadWavFile(value);
+        ok = loadAudioFile(value);
     }
 
     if (ok)
@@ -595,7 +600,41 @@ bool Grist::loadDefaultSample()
     if (!home) return false;
     std::string p(home);
     p += "/Documents/samples/grist.wav";
-    return loadWavFile(p.c_str());
+    return loadAudioFile(p.c_str());
+}
+
+static inline bool endsWithCaseInsensitive(const std::string& s, const char* suffix)
+{
+    const size_t sl = s.size();
+    const size_t tl = std::strlen(suffix);
+    if (tl == 0 || sl < tl) return false;
+    for (size_t i = 0; i < tl; ++i)
+    {
+        const char a = (char)std::tolower((unsigned char)s[sl - tl + i]);
+        const char b = (char)std::tolower((unsigned char)suffix[i]);
+        if (a != b) return false;
+    }
+    return true;
+}
+
+bool Grist::loadAudioFile(const char* path)
+{
+    if (path == nullptr || path[0] == '\0')
+    {
+        lastSampleError = "Empty filename";
+        return false;
+    }
+
+    const std::string p(path);
+
+    if (endsWithCaseInsensitive(p, ".wav") || endsWithCaseInsensitive(p, ".wave"))
+        return loadWavFile(path);
+
+    if (endsWithCaseInsensitive(p, ".mp3"))
+        return loadMp3File(path);
+
+    lastSampleError = "Unsupported file type";
+    return false;
 }
 
 bool Grist::loadWavFile(const char* path)
@@ -657,6 +696,102 @@ bool Grist::loadWavFile(const char* path)
     else
     {
         for (uint64_t i = 0; i < read; ++i)
+        {
+            s->L[(size_t)i] = interleaved[(size_t)i * 2 + 0];
+            s->R[(size_t)i] = interleaved[(size_t)i * 2 + 1];
+        }
+    }
+
+    {
+        const std::lock_guard<std::mutex> lock(sampleMutex);
+        sample = s;
+    }
+
+    return true;
+}
+
+bool Grist::loadMp3File(const char* path)
+{
+    if (path == nullptr || path[0] == '\0')
+    {
+        lastSampleError = "Empty filename";
+        return false;
+    }
+
+    drmp3 mp3;
+    if (!drmp3_init_file(&mp3, path, nullptr))
+    {
+        lastSampleError = "Unable to open/decode MP3";
+        return false;
+    }
+
+    const uint32_t ch = mp3.channels;
+    const uint32_t sr = mp3.sampleRate;
+    drmp3_uint64 frames = drmp3_get_pcm_frame_count(&mp3);
+    if (ch < 1 || ch > 2)
+    {
+        drmp3_uninit(&mp3);
+        lastSampleError = "Unsupported channel count";
+        return false;
+    }
+    if (frames == 0 || frames == DRMP3_UINT64_MAX)
+    {
+        // fallback: just read until EOF, growing as needed
+        frames = 0;
+    }
+
+    std::vector<float> interleaved;
+    if (frames > 0)
+        interleaved.resize((size_t)frames * ch);
+
+    drmp3_uint64 readFrames = 0;
+    if (frames > 0)
+    {
+        readFrames = drmp3_read_pcm_frames_f32(&mp3, frames, interleaved.data());
+    }
+    else
+    {
+        // Unknown length; read in chunks.
+        const drmp3_uint64 chunk = 4096;
+        std::vector<float> tmp;
+        tmp.resize((size_t)chunk * ch);
+        for (;;)
+        {
+            const drmp3_uint64 got = drmp3_read_pcm_frames_f32(&mp3, chunk, tmp.data());
+            if (got == 0) break;
+            const size_t old = interleaved.size();
+            interleaved.resize(old + (size_t)got * ch);
+            std::memcpy(interleaved.data() + old, tmp.data(), (size_t)got * ch * sizeof(float));
+            readFrames += got;
+        }
+    }
+
+    drmp3_uninit(&mp3);
+
+    if (readFrames == 0)
+    {
+        lastSampleError = "Read failed";
+        return false;
+    }
+
+    std::shared_ptr<SampleData> s(new SampleData());
+    s->L.resize((size_t)readFrames);
+    s->R.resize((size_t)readFrames);
+    s->sampleRate = sr;
+    s->path = path ? path : "";
+
+    if (ch == 1)
+    {
+        for (drmp3_uint64 i = 0; i < readFrames; ++i)
+        {
+            const float v = interleaved[(size_t)i];
+            s->L[(size_t)i] = v;
+            s->R[(size_t)i] = v;
+        }
+    }
+    else
+    {
+        for (drmp3_uint64 i = 0; i < readFrames; ++i)
         {
             s->L[(size_t)i] = interleaved[(size_t)i * 2 + 0];
             s->R[(size_t)i] = interleaved[(size_t)i * 2 + 1];

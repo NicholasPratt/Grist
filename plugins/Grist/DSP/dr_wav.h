@@ -23,6 +23,8 @@ typedef struct
 {
     uint32_t channels;
     uint32_t sampleRate;
+    uint16_t bitsPerSample;
+    uint16_t formatTag; /* 1=PCM, 3=IEEE float */
     uint64_t totalPCMFrameCount;
     void* pUserData;
 } drwav;
@@ -111,7 +113,7 @@ int drwav_init_file(drwav* pWav, const char* filename, void* /*pAllocationCallba
         if (chunkSize & 1) fseek(f, 1, SEEK_CUR);
     }
 
-    if (audioFormat != 1 || (bitsPerSample != 16 && bitsPerSample != 24 && bitsPerSample != 32) || dataPos == 0)
+    if ((audioFormat != 1 && audioFormat != 3) || (bitsPerSample != 8 && bitsPerSample != 16 && bitsPerSample != 24 && bitsPerSample != 32) || dataPos == 0)
     {
         fclose(f);
         return 0;
@@ -121,6 +123,8 @@ int drwav_init_file(drwav* pWav, const char* filename, void* /*pAllocationCallba
     fseek(f, dataPos, SEEK_SET);
     pWav->channels = numChannels;
     pWav->sampleRate = sampleRate;
+    pWav->bitsPerSample = bitsPerSample;
+    pWav->formatTag = audioFormat;
     pWav->totalPCMFrameCount = (uint64_t)(dataSize / (numChannels * (bitsPerSample/8)));
     pWav->pUserData = f;
     return 1;
@@ -146,21 +150,72 @@ static float drwav__read_s24_as_f32(const uint8_t* b)
 uint64_t drwav_read_pcm_frames_f32(drwav* pWav, uint64_t framesToRead, float* pBufferOut)
 {
     FILE* f = (FILE*)pWav->pUserData;
-if (!f) return 0;
+    if (!f) return 0;
+
     const uint32_t ch = pWav->channels;
-    // We only support 16-bit for this minimal build; others return 0.
-    // (If you need 24/32-bit, replace this file with full dr_wav.h.)
-    (void)ch;
-    // detect bits by assuming 16bit (since we didn't store it). minimal limitation.
-    // We'll read as int16.
+    const uint16_t bps = pWav->bitsPerSample;
+    const uint16_t fmt = pWav->formatTag;
+
     const uint64_t samplesToRead = framesToRead * ch;
-    for (uint64_t i=0;i<samplesToRead;i++)
+    const uint32_t bytesPerSample = (uint32_t)(bps / 8);
+    if (bytesPerSample == 0)
+        return 0;
+
+    for (uint64_t i = 0; i < samplesToRead; ++i)
     {
-        int16_t s;
-        if (fread(&s, sizeof(int16_t), 1, f) != 1)
+        uint8_t b[4] = {0,0,0,0};
+        if (fread(b, 1, bytesPerSample, f) != bytesPerSample)
             return i / ch;
-        pBufferOut[i] = (float)(s / 32768.0);
+
+        float out = 0.0f;
+
+        if (fmt == 1) // PCM
+        {
+            if (bps == 8)
+            {
+                // unsigned 8-bit PCM centered at 128
+                out = ((int)b[0] - 128) / 128.0f;
+            }
+            else if (bps == 16)
+            {
+                const int16_t v = (int16_t)((uint16_t)b[0] | ((uint16_t)b[1] << 8));
+                out = (float)(v / 32768.0);
+            }
+            else if (bps == 24)
+            {
+                out = drwav__read_s24_as_f32(b);
+            }
+            else if (bps == 32)
+            {
+                const int32_t v = (int32_t)((uint32_t)b[0] | ((uint32_t)b[1] << 8) | ((uint32_t)b[2] << 16) | ((uint32_t)b[3] << 24));
+                out = (float)(v / 2147483648.0);
+            }
+            else
+            {
+                return i / ch;
+            }
+        }
+        else if (fmt == 3) // IEEE float
+        {
+            if (bps == 32)
+            {
+                union { uint32_t u; float f; } u;
+                u.u = (uint32_t)b[0] | ((uint32_t)b[1] << 8) | ((uint32_t)b[2] << 16) | ((uint32_t)b[3] << 24);
+                out = u.f;
+            }
+            else
+            {
+                return i / ch;
+            }
+        }
+        else
+        {
+            return i / ch;
+        }
+
+        pBufferOut[i] = out;
     }
+
     return framesToRead;
 }
 
