@@ -163,6 +163,11 @@ private:
     // double-click detection (DPF MouseEvent doesn't provide click count)
     uint64_t lastWaveClickMs = 0;
 
+    // hover feedback
+    bool waveHoverStart = false;
+    bool waveHoverEnd = false;
+    bool waveHoverRange = false;
+
     static constexpr uint32_t kMaxVizGrains = 64;
     float grainPos[kMaxVizGrains];
     uint32_t grainCount = 0;

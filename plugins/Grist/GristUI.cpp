@@ -721,6 +721,36 @@ bool GristUI::onMotion(const MotionEvent& ev)
     const float mx = ev.pos.getX();
     const float my = ev.pos.getY();
 
+    // Hover feedback for waveform selection.
+    if (tab == Tab::Perform && waveDragMode == 0)
+    {
+        const bool inWave = (mx >= waveX && mx <= waveX + waveW && my >= waveY && my <= waveY + waveH);
+        bool hs = false, he = false, hr = false;
+        if (inWave)
+        {
+            const float innerX = waveX + 10.0f;
+            const float innerW = waveW - 20.0f;
+            const float a = fclampf(sampleStart01, 0.0f, 1.0f);
+            const float b = fclampf(sampleEnd01,   0.0f, 1.0f);
+            const float lo = std::min(a, b);
+            const float hi = std::max(a, b);
+            const float x0 = innerX + lo * innerW;
+            const float x1 = innerX + hi * innerW;
+            const float hitPad = 8.0f;
+            hs = std::fabs(mx - x0) <= hitPad;
+            he = std::fabs(mx - x1) <= hitPad;
+            hr = (!hs && !he && mx >= x0 && mx <= x1);
+        }
+
+        if (hs != waveHoverStart || he != waveHoverEnd || hr != waveHoverRange)
+        {
+            waveHoverStart = hs;
+            waveHoverEnd = he;
+            waveHoverRange = hr;
+            repaint();
+        }
+    }
+
     if (tab == Tab::XY)
     {
         if (!xyActive) return false;
@@ -1144,28 +1174,34 @@ void GristUI::onNanoDisplay()
         fillColor(0.0f, 0.0f, 0.0f, 0.20f);
         fill();
 
-        // highlight region
+        // highlight region (stronger on hover)
+        const float selAlpha = waveHoverRange ? 0.12f : 0.06f;
         beginPath();
         rect(selX, waveY + 10.0f, selW, waveH - 20.0f);
-        fillColor(0.30f, 0.55f, 0.95f, 0.06f);
+        fillColor(0.30f, 0.55f, 0.95f, selAlpha);
         fill();
 
-        // handles
+        // handles (brighter if hovered)
         const float hx0 = innerX + lo * innerW;
         const float hx1 = innerX + hi * innerW;
         for (int i = 0; i < 2; ++i)
         {
+            const bool hov = (i == 0) ? waveHoverStart : waveHoverEnd;
             const float hx = (i == 0) ? hx0 : hx1;
+            const float lineA = hov ? 1.0f : 0.85f;
+            const float fillA = hov ? 1.0f : 0.90f;
+            const float thick = hov ? 3.0f : 2.0f;
+
             beginPath();
             moveTo(hx, waveY + 8.0f);
             lineTo(hx, waveY + waveH - 8.0f);
-            strokeColor(0.35f, 0.65f, 1.0f, 0.85f);
-            strokeWidth(2.0f);
+            strokeColor(0.35f, 0.70f, 1.0f, lineA);
+            strokeWidth(thick);
             stroke();
 
             beginPath();
             roundedRect(hx - 7.0f, waveY + 10.0f, 14.0f, 18.0f, 4.0f);
-            fillColor(0.35f, 0.65f, 1.0f, 0.90f);
+            fillColor(0.35f, 0.70f, 1.0f, fillA);
             fill();
         }
     }
