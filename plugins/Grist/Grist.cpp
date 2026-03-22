@@ -1380,8 +1380,8 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
             mixR += accR * vAmp;
         }
 
-        outL[i] = mixL;
-        outR[i] = mixR;
+        outL[i] += mixL;
+        outR[i] += mixR;
     }
 
     // Publish grain viz to UI at ~30 Hz (best-effort).
