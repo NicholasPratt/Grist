@@ -168,6 +168,9 @@ private:
     bool waveHoverEnd = false;
     bool waveHoverRange = false;
 
+    float playhead01 = -1.0f; // <0 means hidden
+    bool previewOn = false;
+
     static constexpr uint32_t kMaxVizGrains = 64;
     float grainPos[kMaxVizGrains];
     uint32_t grainCount = 0;

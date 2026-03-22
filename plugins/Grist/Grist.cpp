@@ -46,7 +46,7 @@ static inline float catmullRom(const float y0, const float y1, const float y2, c
 }
 
 Grist::Grist()
-    : Plugin(kParamCount, 0, 6), // params, programs, states
+    : Plugin(kParamCount, 0, 8), // params, programs, states
       fGain(0.8f),
       fGrainSizeMs(60.0f),
       fDensity(20.0f),
@@ -73,6 +73,13 @@ Grist::Grist()
       currentNote(60),
       currentVelocity(0.8f)
 {
+    previewActive = false;
+    previewPos = 0.0;
+    previewEnd = 0.0;
+    previewInc = 1.0;
+    previewGain = 0.35f;
+    previewDecim = 0;
+
     vizEventCount = 0;
     vizDecim = 0;
 
@@ -197,6 +204,20 @@ void Grist::initState(uint32_t index, State& state)
         state.hints = 0;
         state.label = "Mod Matrix";
     }
+    else if (index == 6)
+    {
+        state.key = "preview";
+        state.defaultValue = "";
+        state.hints = 0;
+        state.label = "Preview Command";
+    }
+    else if (index == 7)
+    {
+        state.key = "playhead";
+        state.defaultValue = "";
+        state.hints = 0;
+        state.label = "Preview Playhead";
+    }
 }
 
 void Grist::setState(const char* key, const char* value)
@@ -205,7 +226,9 @@ void Grist::setState(const char* key, const char* value)
         return;
 
     // Output-only states (we still accept them from host silently).
-    if (std::strcmp(key, "sample_status") == 0 || std::strcmp(key, "sample_error") == 0 || std::strcmp(key, "grains") == 0 || std::strcmp(key, "grains_active") == 0)
+    if (std::strcmp(key, "sample_status") == 0 || std::strcmp(key, "sample_error") == 0 ||
+        std::strcmp(key, "grains") == 0 || std::strcmp(key, "grains_active") == 0 ||
+        std::strcmp(key, "playhead") == 0)
         return;
 
     if (std::strcmp(key, "mod_matrix") == 0)
@@ -247,6 +270,49 @@ void Grist::setState(const char* key, const char* value)
             modMatrix.slots[(uint32_t)tgt][(uint32_t)slot].source = src;
             modMatrix.slots[(uint32_t)tgt][(uint32_t)slot].amount = fclampf(amt, -1.0f, 1.0f);
         }
+        return;
+    }
+
+    if (std::strcmp(key, "preview") == 0)
+    {
+        // "stop" or empty stops.
+        if (value == nullptr || value[0] == '\0' || std::strcmp(value, "stop") == 0)
+        {
+            previewActive = false;
+            updateStateValue("playhead", "");
+            return;
+        }
+
+        // Expected format: "start01,end01" (0..1)
+        float st = 0.0f;
+        float en = 1.0f;
+        {
+            char* endp = nullptr;
+            st = fclampf(std::strtof(value, &endp), 0.0f, 1.0f);
+            if (endp && *endp == ',')
+                en = fclampf(std::strtof(endp + 1, nullptr), 0.0f, 1.0f);
+        }
+
+        std::shared_ptr<const SampleData> s;
+        {
+            std::lock_guard<std::mutex> lock(sampleMutex);
+            s = sample;
+        }
+        if (!s || s->L.empty())
+        {
+            previewActive = false;
+            return;
+        }
+
+        const size_t len = s->L.size();
+        const double lo = (double)std::min(st, en) * (double)(len - 1);
+        const double hi = (double)std::max(st, en) * (double)(len - 1);
+
+        previewPos = lo;
+        previewEnd = std::max(lo + 1.0, hi);
+        previewInc = (double)s->sampleRate / fSampleRate;
+        previewActive = true;
+        previewDecim = 0;
         return;
     }
 
@@ -848,6 +914,12 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
     float* outL = outputs[0];
     float* outR = outputs[1];
 
+    // keep local preview snapshot
+    bool pActive = previewActive;
+    double pPos = previewPos;
+    double pEnd = previewEnd;
+    double pInc = previewInc;
+
     auto lfoValue = [&](float phase, int shape, float& hold) -> float {
         // phase 0..1
         const float p = phase - std::floor(phase);
@@ -871,6 +943,75 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
     float lfo2Hold = 0.0f;
 
     for (uint32_t i = 0; i < frames; ++i) { outL[i] = 0.0f; outR[i] = 0.0f; }
+
+    // Sample preview (audition) runs even without MIDI.
+    if (pActive)
+    {
+        std::shared_ptr<const SampleData> ps;
+        {
+            std::lock_guard<std::mutex> lock(sampleMutex);
+            ps = sample;
+        }
+
+        if (!ps || ps->L.size() < 2 || ps->R.size() < 2)
+        {
+            pActive = false;
+        }
+        else
+        {
+            const size_t plen = ps->L.size();
+            const double maxPos = (double)(plen - 2);
+            const double stopPos = std::min(pEnd, maxPos);
+
+            for (uint32_t i = 0; i < frames; ++i)
+            {
+                if (pPos >= stopPos)
+                {
+                    pActive = false;
+                    break;
+                }
+
+                const size_t idx = (size_t)pPos;
+                const float frac = (float)(pPos - (double)idx);
+
+                const size_t i0 = (idx > 0) ? (idx - 1) : idx;
+                const size_t i1 = idx;
+                const size_t i2 = (idx + 1 < plen) ? (idx + 1) : idx;
+                const size_t i3 = (idx + 2 < plen) ? (idx + 2) : i2;
+
+                const float l = catmullRom(ps->L[i0], ps->L[i1], ps->L[i2], ps->L[i3], frac);
+                const float r = catmullRom(ps->R[i0], ps->R[i1], ps->R[i2], ps->R[i3], frac);
+
+                outL[i] += l * previewGain;
+                outR[i] += r * previewGain;
+
+                pPos += pInc;
+            }
+
+            // publish playhead at ~30 Hz
+            previewDecim += frames;
+            const uint32_t interval = (uint32_t)std::max(1.0, fSampleRate / 30.0);
+            if (previewDecim >= interval)
+            {
+                previewDecim = 0;
+                if (pActive)
+                {
+                    char buf[32];
+                    const double pos01 = (double)pPos / (double)(plen - 1);
+                    std::snprintf(buf, sizeof(buf), "%.4f", (float)fclampf((float)pos01, 0.0f, 1.0f));
+                    updateStateValue("playhead", buf);
+                }
+                else
+                {
+                    updateStateValue("playhead", "");
+                }
+            }
+        }
+
+        // store back
+        previewActive = pActive;
+        previewPos = pPos;
+    }
 
     // Grab sample snapshot (shared_ptr keeps data alive without holding lock)
     std::shared_ptr<const SampleData> s;

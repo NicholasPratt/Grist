@@ -466,6 +466,22 @@ void GristUI::stateChanged(const char* key, const char* value)
         return;
     }
 
+    if (std::strcmp(key, "playhead") == 0)
+    {
+        if (value && value[0] != '\0')
+        {
+            playhead01 = fclampf(std::strtof(value, nullptr), 0.0f, 1.0f);
+            previewOn = true;
+        }
+        else
+        {
+            playhead01 = -1.0f;
+            previewOn = false;
+        }
+        repaint();
+        return;
+    }
+
     if (std::strcmp(key, "sample_status") == 0)
     {
         repaint();
@@ -547,18 +563,22 @@ bool GristUI::onMouse(const MouseEvent& ev)
         const float my = ev.pos.getY();
         if (tab == Tab::Perform && mx >= waveX && mx <= waveX + waveW && my >= waveY && my <= waveY + waveH)
         {
-            const uint64_t nowMs = (uint64_t)(getApp().getTime() * 1000.0);
-            const uint64_t dt = (nowMs >= lastWaveClickMs) ? (nowMs - lastWaveClickMs) : 999999;
-            lastWaveClickMs = nowMs;
-
-            if (dt <= 350)
+            // Don't interfere with Ctrl-click preview.
+            if ((ev.mod & kModifierControl) == 0)
             {
-                sampleStart01 = 0.0f;
-                sampleEnd01 = 1.0f;
-                setParamFromValue(kParamSampleStart, 0.0f);
-                setParamFromValue(kParamSampleEnd, 100.0f);
-                repaint();
-                return true;
+                const uint64_t nowMs = (uint64_t)(getApp().getTime() * 1000.0);
+                const uint64_t dt = (nowMs >= lastWaveClickMs) ? (nowMs - lastWaveClickMs) : 999999;
+                lastWaveClickMs = nowMs;
+
+                if (dt <= 350)
+                {
+                    sampleStart01 = 0.0f;
+                    sampleEnd01 = 1.0f;
+                    setParamFromValue(kParamSampleStart, 0.0f);
+                    setParamFromValue(kParamSampleEnd, 100.0f);
+                    repaint();
+                    return true;
+                }
             }
         }
     }
@@ -623,7 +643,7 @@ bool GristUI::onMouse(const MouseEvent& ev)
             return false;
         }
 
-        // PERFORM: waveform range drag handles / range drag
+        // PERFORM: waveform range drag handles / range drag / preview
         {
             const float innerX = waveX + 10.0f;
             const float innerW = waveW - 20.0f;
@@ -640,6 +660,30 @@ bool GristUI::onMouse(const MouseEvent& ev)
             const bool inWave = (mx >= waveX && mx <= waveX + waveW && my >= waveY && my <= waveY + waveH);
             if (inWave)
             {
+                // Ctrl-click: start/stop preview from mouse position, within selection.
+                if ((ev.mod & kModifierControl) != 0)
+                {
+                    if (previewOn)
+                    {
+                        setState("preview", "stop");
+                        playhead01 = -1.0f;
+                        previewOn = false;
+                    }
+                    else
+                    {
+                        // start at click, clamp inside selection
+                        float n = fclampf((mx - innerX) / innerW, 0.0f, 1.0f);
+                        n = fclampf(n, lo, hi);
+                        char buf[64];
+                        std::snprintf(buf, sizeof(buf), "%.4f,%.4f", n, hi);
+                        setState("preview", buf);
+                        previewOn = true;
+                        playhead01 = n;
+                    }
+                    repaint();
+                    return true;
+                }
+
                 // Prefer handle drags.
                 if (std::fabs(mx - x0) <= hitPad)
                 {
@@ -1203,6 +1247,18 @@ void GristUI::onNanoDisplay()
             roundedRect(hx - 7.0f, waveY + 10.0f, 14.0f, 18.0f, 4.0f);
             fillColor(0.35f, 0.70f, 1.0f, fillA);
             fill();
+        }
+
+        // playhead (preview)
+        if (playhead01 >= 0.0f)
+        {
+            const float phx = innerX + fclampf(playhead01, 0.0f, 1.0f) * innerW;
+            beginPath();
+            moveTo(phx, waveY + 10.0f);
+            lineTo(phx, waveY + waveH - 10.0f);
+            strokeColor(1.0f, 0.35f, 0.25f, 0.95f);
+            strokeWidth(2.0f);
+            stroke();
         }
     }
 

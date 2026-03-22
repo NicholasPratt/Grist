@@ -83,6 +83,14 @@ private:
     int currentNote;
     float currentVelocity; // 0..1
 
+    // Sample preview (audition)
+    bool previewActive = false;
+    double previewPos = 0.0;     // sample frames (fractional)
+    double previewEnd = 0.0;     // sample frames
+    double previewInc = 1.0;     // per output sample
+    float previewGain = 0.35f;
+    uint32_t previewDecim = 0;
+
     struct SampleData {
         std::vector<float> L;
         std::vector<float> R;
