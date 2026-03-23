@@ -227,7 +227,8 @@ void GristUI::initKnobs()
 
     const float smallR = 22.0f * knobScale;
     const float startX = waveX + 18.0f + smallR;
-    const float step   = smallR * 2.0f + 16.0f * knobScale; // keep spacing proportional
+    // Spacing between knobs. We keep this slightly larger than proportional so labels and mod slots have room.
+    const float step   = smallR * 2.0f + 24.0f * knobScale;
 
     // Row 1 (top): GRAINS + FILTER
     const float row1cy = stripY + stripH * 0.27f;
@@ -249,7 +250,7 @@ void GristUI::initKnobs()
     }
 
     // Filter knobs: TYPE, CUT, RES — placed after GRAINS with a section gap
-    const float filtStartX = startX + kNumHeroKnobs * step + 50.0f;
+    const float filtStartX = startX + kNumHeroKnobs * step + 70.0f * knobScale;
     filterKnobs[0] = { filtStartX,          row1cy, smallR, kParamFilterType,   0.0f,  1.0f,     0.0f,  "TYPE", "",   false, 0.0f  };
     filterKnobs[1] = { filtStartX + step,   row1cy, smallR, kParamFilterCutoff, 20.0f, 20000.0f, 40.0f, "CUT",  "Hz", false, 40.0f };
     filterKnobs[2] = { filtStartX + step*2, row1cy, smallR, kParamFilterRes,    0.0f,  1.0f,     0.0f,  "RES",  "",   false, 0.0f  };
@@ -275,7 +276,7 @@ void GristUI::initKnobs()
     }
 
     // LFO knobs: MOD — placed after AMP/ENV with a section gap
-    const float lfoStartX = startX + kNumSmallKnobs * step + 40.0f;
+    const float lfoStartX = startX + kNumSmallKnobs * step + 60.0f * knobScale;
     const struct { uint32_t p; float minV; float maxV; float defV; const char* label; const char* unit; bool bipolar; } ldefs[kNumLfoKnobs] = {
         { kParamLfo1RateHz, 0.01f, 20.0f, 0.25f, "L1 RT",  "Hz", false },
         { kParamLfo1Shape,  0.0f,  4.0f,  0.0f,  "L1 SH",  "",   false },
@@ -1708,14 +1709,14 @@ void GristUI::onNanoDisplay()
     fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
     textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
     {
-        const float row1LabelY = hero[0].y - hero[0].r - 22.0f;
+        const float row1LabelY = hero[0].y - hero[0].r - (16.0f + hero[0].r * 0.8f);
         text(hero[0].x - hero[0].r, row1LabelY, "GRAINS", nullptr);
         text(filterKnobs[0].x - filterKnobs[0].r, row1LabelY, "FILTER", nullptr);
     }
 
     // Row 2 labels
     {
-        const float row2LabelY = small[0].y - small[0].r - 22.0f;
+        const float row2LabelY = small[0].y - small[0].r - (16.0f + small[0].r * 0.8f);
         text(small[0].x - small[0].r, row2LabelY, "AMP / ENV", nullptr);
         text(lfo[0].x - lfo[0].r, row2LabelY, "MOD", nullptr);
     }
@@ -1728,7 +1729,8 @@ void GristUI::onNanoDisplay()
         const float gap = 6.0f;
         const float slotsW = kSlotsPerTarget * bs + (kSlotsPerTarget - 1) * gap;
         const float bx = hero[i].x - slotsW * 0.5f;
-        const float by = hero[i].y + hero[i].r + 14.0f;
+        // Put mod slots below the knob label/value so they don't cover text.
+        const float by = hero[i].y + hero[i].r * 2.65f;
         drawModSlotsForParam(hero[i].param, bx, by);
     }
 
@@ -1742,7 +1744,7 @@ void GristUI::onNanoDisplay()
         const float gap = 6.0f;
         const float slotsW = kSlotsPerTarget * bs + (kSlotsPerTarget - 1) * gap;
         const float bx0 = ck.x - slotsW * 0.5f;
-        const float by0 = ck.y + ck.r + 14.0f;
+        const float by0 = ck.y + ck.r * 2.65f;
         drawModSlotsForParam(ck.param, bx0, by0);
     }
 
