@@ -92,9 +92,24 @@ GristUI::GristUI()
     initKnobs();
     initModDefaults();
 
+    sc = (float)getScaleFactor();
+    if (sc != 1.0f)
+        setSize(uint(DISTRHO_UI_DEFAULT_WIDTH * sc), uint(DISTRHO_UI_DEFAULT_HEIGHT * sc));
+
     for (uint32_t i = 0; i < kMaxVizGrains; ++i)
         grainPos[i] = 0.0f;
     grainCount = 0;
+}
+
+void GristUI::uiScaleFactorChanged(const double scaleFactor)
+{
+    sc = (float)scaleFactor;
+    setSize(uint(DISTRHO_UI_DEFAULT_WIDTH * sc), uint(DISTRHO_UI_DEFAULT_HEIGHT * sc));
+    layoutWaveArea();
+    layoutPerform();
+    layoutXY();
+    initKnobs();
+    repaint();
 }
 
 void GristUI::layoutWaveArea()
@@ -128,14 +143,14 @@ void GristUI::layoutPerform()
 
     // Reload on right
     btnW = 190.0f;
-    btnX = getWidth() - 18.0f - btnW;
+    btnX = float(DISTRHO_UI_DEFAULT_WIDTH) - 18.0f - btnW;
     btnY = tabY;
     btnH = tabH;
 
     // Reposition waveform area to fill left side (leave room for right control column)
     waveX = 18.0f;
     waveY = 60.0f;
-    waveW = getWidth() - 18.0f - 18.0f - 320.0f;
+    waveW = float(DISTRHO_UI_DEFAULT_WIDTH) - 18.0f - 18.0f - 320.0f;
     waveH = 200.0f;
 }
 
@@ -143,15 +158,15 @@ void GristUI::layoutXY()
 {
     xyX = 18.0f;
     xyY = 60.0f;
-    xyW = getWidth() - 36.0f;
-    xyH = getHeight() - xyY - 18.0f;
+    xyW = float(DISTRHO_UI_DEFAULT_WIDTH) - 36.0f;
+    xyH = float(DISTRHO_UI_DEFAULT_HEIGHT) - xyY - 18.0f;
 }
 
 void GristUI::initKnobs()
 {
     // Right control column
     const float colX = waveX + waveW + 18.0f;
-    const float colW = getWidth() - 18.0f - colX;
+    const float colW = float(DISTRHO_UI_DEFAULT_WIDTH) - 18.0f - colX;
 
     // Macros: slightly smaller so the panel breathes
     const float macroR = 38.0f;
@@ -180,7 +195,7 @@ void GristUI::initKnobs()
 
     // Bottom strip (full width) contains AMP/ENV (small knobs) + GRAINS (hero knobs)
     const float stripY = waveY + waveH + 18.0f;
-    const float stripH = getHeight() - stripY - 18.0f;
+    const float stripH = float(DISTRHO_UI_DEFAULT_HEIGHT) - stripY - 18.0f;
 
     const struct { uint32_t p; float minV; float maxV; float defV; const char* label; const char* unit; bool bipolar; } hdefs[5] = {
         { kParamGrainSizeMs, 5.0f, 250.0f, 60.0f, "SIZE", "ms", false },
@@ -566,8 +581,8 @@ bool GristUI::onMouse(const MouseEvent& ev)
     // double-click (left) resets sample range selection
     if (ev.button == 1 && ev.press)
     {
-        const float mx = ev.pos.getX();
-        const float my = ev.pos.getY();
+        const float mx = ev.pos.getX() / sc;
+        const float my = ev.pos.getY() / sc;
         if (tab == Tab::Perform && mx >= waveX && mx <= waveX + waveW && my >= waveY && my <= waveY + waveH)
         {
             // Don't interfere with Ctrl-click preview.
@@ -593,8 +608,8 @@ bool GristUI::onMouse(const MouseEvent& ev)
     if (ev.button != 1)
         return false;
 
-    const float mx = ev.pos.getX();
-    const float my = ev.pos.getY();
+    const float mx = ev.pos.getX() / sc;
+    const float my = ev.pos.getY() / sc;
 
     if (ev.press)
     {
@@ -795,8 +810,8 @@ bool GristUI::onMouse(const MouseEvent& ev)
 
 bool GristUI::onMotion(const MotionEvent& ev)
 {
-    const float mx = ev.pos.getX();
-    const float my = ev.pos.getY();
+    const float mx = ev.pos.getX() / sc;
+    const float my = ev.pos.getY() / sc;
 
     // Hover feedback for waveform selection.
     if (tab == Tab::Perform && waveDragMode == 0)
@@ -1042,8 +1057,11 @@ void GristUI::drawKnob(const Knob& k, bool active)
 
 void GristUI::onNanoDisplay()
 {
-    const float W = getWidth();
-    const float H = getHeight();
+    save();
+    scale(sc, sc);
+
+    const float W = float(DISTRHO_UI_DEFAULT_WIDTH);
+    const float H = float(DISTRHO_UI_DEFAULT_HEIGHT);
 
     // background (subtle vertical gradient)
     beginPath();
@@ -1375,7 +1393,7 @@ void GristUI::onNanoDisplay()
 
     // Right panel: macros only
     const float colX = waveX + waveW + 18.0f;
-    const float colW = getWidth() - 18.0f - colX;
+    const float colW = float(DISTRHO_UI_DEFAULT_WIDTH) - 18.0f - colX;
 
     {
         const float colY = waveY;
@@ -1400,10 +1418,10 @@ void GristUI::onNanoDisplay()
 
     // bottom strip panel (full width): AMP/ENV on left + GRAINS on right
     const float stripY = waveY + waveH + 18.0f;
-    const float stripH = getHeight() - stripY - 18.0f;
+    const float stripH = float(DISTRHO_UI_DEFAULT_HEIGHT) - stripY - 18.0f;
 
     beginPath();
-    roundedRect(waveX, stripY, getWidth() - 36.0f, stripH, 14.0f);
+    roundedRect(waveX, stripY, float(DISTRHO_UI_DEFAULT_WIDTH) - 36.0f, stripH, 14.0f);
     fillColor(T.panel[0], T.panel[1], T.panel[2]);
     fill();
     strokeColor(T.stroke[0], T.stroke[1], T.stroke[2]);
@@ -1442,6 +1460,8 @@ void GristUI::onNanoDisplay()
         const float by = hero[i].y + hero[i].r + 44.0f;
         drawModSlotsForParam(hero[i].param, bx, by);
     }
+
+    restore();
 }
 
 // ---------------------------

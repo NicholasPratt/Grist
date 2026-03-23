@@ -21,6 +21,7 @@ protected:
     void parameterChanged(uint32_t index, float value) override;
     void stateChanged(const char* key, const char* value) override;
     void uiIdle() override;
+    void uiScaleFactorChanged(double scaleFactor) override;
 
 #if DISTRHO_UI_FILE_BROWSER
     void uiFileBrowserSelected(const char* filename) override;
@@ -137,6 +138,8 @@ private:
     ModSource nextModSource(ModSource s) const;
     bool sliderToModTarget(uint32_t param, ModTarget& tgt) const;
     bool hitTestModBox(float x, float y, int& outTarget, int& outSlot) const;
+
+    float sc = 1.0f; // current UI scale factor
 
     void initSliders();
     int hitTest(float x, float y) const;
