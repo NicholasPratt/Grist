@@ -231,7 +231,8 @@ void GristUI::initKnobs()
     const float step   = smallR * 2.0f + 24.0f * knobScale;
 
     // Row 1 (top): GRAINS + FILTER
-    const float row1cy = stripY + stripH * 0.27f;
+    // Raise row 1 a bit so knob value text doesn't collide with modulation slots.
+    const float row1cy = stripY + stripH * 0.27f - 14.0f;
 
     // Hero knobs: GRAINS (SIZE, DENS, POS, SPRAY, PITCH)
     const struct { uint32_t p; float minV; float maxV; float defV; const char* label; const char* unit; bool bipolar; } hdefs[5] = {
@@ -1746,7 +1747,8 @@ void GristUI::onNanoDisplay()
         const float slotsW = kSlotsPerTarget * bs + (kSlotsPerTarget - 1) * gap;
         const float bx = hero[i].x - slotsW * 0.5f;
         // Put mod slots below the knob label/value so they don't cover text.
-        const float by = hero[i].y + hero[i].r * 2.65f;
+        // labelY = y + r + 18, valueY = labelY + 14; then add some padding.
+        const float by = hero[i].y + hero[i].r + 42.0f;
         drawModSlotsForParam(hero[i].param, bx, by);
     }
 
@@ -1760,7 +1762,7 @@ void GristUI::onNanoDisplay()
         const float gap = 6.0f;
         const float slotsW = kSlotsPerTarget * bs + (kSlotsPerTarget - 1) * gap;
         const float bx0 = ck.x - slotsW * 0.5f;
-        const float by0 = ck.y + ck.r * 2.65f;
+        const float by0 = ck.y + ck.r + 42.0f;
         drawModSlotsForParam(ck.param, bx0, by0);
     }
 
