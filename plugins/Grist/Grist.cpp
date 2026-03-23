@@ -70,6 +70,7 @@ Grist::Grist()
       fFilterCutoff(40.0f),
       fFilterRes(0.0f),
       fPitchLock(0.0f),
+      fFilterType(0.0f),
       fBqX1L(0.0f), fBqX2L(0.0f), fBqY1L(0.0f), fBqY2L(0.0f),
       fBqX1R(0.0f), fBqX2R(0.0f), fBqY1R(0.0f), fBqY2R(0.0f),
       fX(0.0f),
@@ -622,6 +623,15 @@ void Grist::initParameter(uint32_t index, Parameter& parameter)
         parameter.ranges.min = 0.0f;
         parameter.ranges.max = 1.0f;
         break;
+
+    case kParamFilterType:
+        parameter.name = "Filter Type";
+        parameter.symbol = "filter_type";
+        parameter.hints |= kParameterIsInteger;
+        parameter.ranges.def = 0.0f;
+        parameter.ranges.min = 0.0f;
+        parameter.ranges.max = 1.0f;
+        break;
     }
 }
 
@@ -665,6 +675,7 @@ float Grist::getParameterValue(uint32_t index) const
     case kParamFilterCutoff: return fFilterCutoff;
     case kParamFilterRes: return fFilterRes;
     case kParamPitchLock: return fPitchLock;
+    case kParamFilterType: return fFilterType;
 
     default: return 0.0f;
     }
@@ -731,6 +742,17 @@ void Grist::setParameterValue(uint32_t index, float value)
     case kParamFilterCutoff: fFilterCutoff = fclampf(value, 20.0f, 20000.0f); break;
     case kParamFilterRes: fFilterRes = fclampf(value, 0.0f, 1.0f); break;
     case kParamPitchLock: fPitchLock = (value >= 0.5f) ? 1.0f : 0.0f; break;
+    case kParamFilterType:
+    {
+        const float v = (value >= 0.5f) ? 1.0f : 0.0f;
+        if (v != fFilterType)
+        {
+            fFilterType = v;
+            fBqX1L = fBqX2L = fBqY1L = fBqY2L = 0.0f;
+            fBqX1R = fBqX2R = fBqY1R = fBqY2R = 0.0f;
+        }
+        break;
+    }
 
     case kParamX:
         fX = fclampf(value, -1.0f, 1.0f);
@@ -1578,16 +1600,28 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
         // Q from resonance: 0->0.707, 1->12
         const float Q = 0.707f + fFilterRes * 11.293f;
 
-        // Biquad HPF coefficients
+        // Biquad filter coefficients (HPF or LPF based on fFilterType)
         const float w0 = 2.0f * 3.14159265f * fc / (float)fSampleRate;
         const float cosW0 = std::cos(w0);
         const float sinW0 = std::sin(w0);
         const float alpha = sinW0 / (2.0f * Q);
-
         const float a0r = 1.0f / (1.0f + alpha);
-        const float bqB0 = (1.0f + cosW0) * 0.5f * a0r;
-        const float bqB1 = -(1.0f + cosW0) * a0r;
-        const float bqB2 = (1.0f + cosW0) * 0.5f * a0r;
+
+        float bqB0, bqB1, bqB2;
+        if (fFilterType >= 0.5f)
+        {
+            // LPF
+            bqB0 = (1.0f - cosW0) * 0.5f * a0r;
+            bqB1 = (1.0f - cosW0) * a0r;
+            bqB2 = (1.0f - cosW0) * 0.5f * a0r;
+        }
+        else
+        {
+            // HPF
+            bqB0 = (1.0f + cosW0) * 0.5f * a0r;
+            bqB1 = -(1.0f + cosW0) * a0r;
+            bqB2 = (1.0f + cosW0) * 0.5f * a0r;
+        }
         const float bqA1 = -2.0f * cosW0 * a0r;
         const float bqA2 = (1.0f - alpha) * a0r;
 

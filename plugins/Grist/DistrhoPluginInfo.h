@@ -81,6 +81,8 @@ enum Parameters {
     kParamFilterRes,
     kParamPitchLock,
 
+    kParamFilterType,   // 0=HPF, 1=LPF
+
     kParamCount
 };
 

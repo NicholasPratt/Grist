@@ -75,6 +75,7 @@ private:
     float fFilterCutoff;   // Hz, 20..20000
     float fFilterRes;      // 0..1
     float fPitchLock;      // 0/1
+    float fFilterType;     // 0=HPF, 1=LPF
 
     // Stereo biquad HPF state
     float fBqX1L, fBqX2L, fBqY1L, fBqY2L;

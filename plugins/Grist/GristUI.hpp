@@ -76,7 +76,7 @@ private:
     static constexpr uint32_t kNumHeroKnobs  = 5;
     static constexpr uint32_t kNumSmallKnobs = 6; // AMP/ENV
     static constexpr uint32_t kNumLfoKnobs = 6;   // LFO1 rate/shape/amp, LFO2 rate/shape/amp
-    static constexpr uint32_t kNumFilterKnobs = 2; // HPF Cutoff + Resonance
+    static constexpr uint32_t kNumFilterKnobs = 3; // TYPE + Cutoff + Resonance
     static constexpr uint32_t kNumXYMacros = 8;
 
     Knob macro[kNumMacroKnobs];

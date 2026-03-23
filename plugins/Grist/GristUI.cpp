@@ -195,112 +195,105 @@ void GristUI::layoutXY()
 
 void GristUI::initKnobs()
 {
-    // Right control column
+    // Right control column — MACROS only (filter moved to bottom strip)
     const float colX = waveX + waveW + 18.0f;
     const float colW = float(DISTRHO_UI_DEFAULT_WIDTH) - 18.0f - colX;
 
-    // Macros: slightly smaller so the panel breathes
-    const float macroR = 28.0f;
-    const float macroGapX = 22.0f;
-    const float macroGapY = 14.0f;
-
-    // Macros (2 knobs) centered within the macros panel
-    const float macrosPad = 18.0f;
+    const float macroR = 32.0f;
+    const float macroGapX = 18.0f;
+    const float macrosPad = 14.0f;
     const float macrosInnerW = colW - macrosPad * 2.0f;
     const float macrosRowW = 2.0f * (macroR * 2.0f) + macroGapX;
     const float m0x = colX + macrosPad + (macrosInnerW - macrosRowW) * 0.5f + macroR;
-    const float m0y = waveY + 30.0f + macroR;
+    const float m0y = waveY + waveH * 0.5f;
 
     const struct { uint32_t p; const char* label; } mdefs[2] = {
         { kParamMacro1, "MACRO 1" },
         { kParamMacro2, "MACRO 2" },
     };
 
-    // 2 macros side-by-side
     for (uint32_t i = 0; i < 2; ++i)
     {
         const float cx = m0x + i * (macroR * 2.0f + macroGapX);
-        const float cy = m0y;
-        macro[i] = { cx, cy, macroR, mdefs[i].p, -1.0f, 1.0f, 0.0f, mdefs[i].label, "", true, 0.0f };
+        macro[i] = { cx, m0y, macroR, mdefs[i].p, -1.0f, 1.0f, 0.0f, mdefs[i].label, "", true, 0.0f };
     }
 
-    // Bottom strip (full width) contains AMP/ENV (small knobs) + GRAINS (hero knobs)
+    // Bottom strip (full width) — 2 rows
     const float stripY = waveY + waveH + 18.0f;
     const float stripH = float(DISTRHO_UI_DEFAULT_HEIGHT) - stripY - 18.0f;
 
-    const struct { uint32_t p; float minV; float maxV; float defV; const char* label; const char* unit; bool bipolar; } hdefs[5] = {
-        { kParamGrainSizeMs, 5.0f, 250.0f, 60.0f, "SIZE", "ms", false },
-        { kParamDensity,     1.0f, 80.0f,  20.0f, "DENS", "gr/s", false },
-        { kParamPosition,    0.0f, 100.0f, 50.0f, "POS",  "%", false },
-        { kParamSpray,       0.0f, 100.0f, 0.0f,  "SPRAY","%", false },
-        { kParamPitch,      -24.0f, 24.0f, 0.0f,  "PITCH","st", true },
-    };
-
-    // Small knobs (AMP/ENV)
     const float smallR = 22.0f;
     const float startX = waveX + 18.0f + smallR;
-    const float gapX = 16.0f;
+    const float step   = smallR * 2.0f + 16.0f; // 60px per knob
 
+    // Row 1 (top): GRAINS + FILTER
+    const float row1cy = stripY + stripH * 0.27f;
+
+    // Hero knobs: GRAINS (SIZE, DENS, POS, SPRAY, PITCH)
+    const struct { uint32_t p; float minV; float maxV; float defV; const char* label; const char* unit; bool bipolar; } hdefs[5] = {
+        { kParamGrainSizeMs, 5.0f, 250.0f, 60.0f, "SIZE",  "ms",   false },
+        { kParamDensity,     1.0f, 80.0f,  20.0f, "DENS",  "gr/s", false },
+        { kParamPosition,    0.0f, 100.0f, 50.0f, "POS",   "%",    false },
+        { kParamSpray,       0.0f, 100.0f, 0.0f,  "SPRAY", "%",    false },
+        { kParamPitch,      -24.0f, 24.0f, 0.0f,  "PITCH", "st",   true  },
+    };
+
+    for (uint32_t i = 0; i < kNumHeroKnobs; ++i)
+    {
+        hero[i] = { startX + i * step, row1cy, smallR,
+                    hdefs[i].p, hdefs[i].minV, hdefs[i].maxV, hdefs[i].defV,
+                    hdefs[i].label, hdefs[i].unit, hdefs[i].bipolar, hdefs[i].defV };
+    }
+
+    // Filter knobs: TYPE, CUT, RES — placed after GRAINS with a section gap
+    const float filtStartX = startX + kNumHeroKnobs * step + 50.0f;
+    filterKnobs[0] = { filtStartX,          row1cy, smallR, kParamFilterType,   0.0f,  1.0f,     0.0f,  "TYPE", "",   false, 0.0f  };
+    filterKnobs[1] = { filtStartX + step,   row1cy, smallR, kParamFilterCutoff, 20.0f, 20000.0f, 40.0f, "CUT",  "Hz", false, 40.0f };
+    filterKnobs[2] = { filtStartX + step*2, row1cy, smallR, kParamFilterRes,    0.0f,  1.0f,     0.0f,  "RES",  "",   false, 0.0f  };
+
+    // Row 2 (bottom): AMP/ENV + MOD
+    const float row2cy = stripY + stripH * 0.73f;
+
+    // Small knobs: AMP/ENV
     const struct { uint32_t p; float minV; float maxV; float defV; const char* label; const char* unit; bool bipolar; } sdefs[kNumSmallKnobs] = {
-        { kParamGain,           0.0f, 2.0f,    1.0f,  "GAIN", "", false },
-        { kParamAttackMs,       0.0f, 2000.0f, 5.0f,  "ATK",  "ms", false },
-        { kParamReleaseMs,      5.0f, 5000.0f, 120.0f,"REL",  "ms", false },
-        { kParamPitchEnvAmt,   -48.0f, 48.0f,  0.0f,  "PENV", "st", true },
-        { kParamPitchEnvDecayMs,0.0f, 5000.0f, 120.0f,"PDEC", "ms", false },
-        { kParamRandomPitch,    0.0f, 12.0f,   0.0f,  "RND",  "st", false },
+        { kParamGain,            0.0f,   2.0f,    1.0f,   "GAIN", "",   false },
+        { kParamAttackMs,        0.0f,   2000.0f, 5.0f,   "ATK",  "ms", false },
+        { kParamReleaseMs,       5.0f,   5000.0f, 120.0f, "REL",  "ms", false },
+        { kParamPitchEnvAmt,    -48.0f,  48.0f,   0.0f,   "PENV", "st", true  },
+        { kParamPitchEnvDecayMs, 0.0f,   5000.0f, 120.0f, "PDEC", "ms", false },
+        { kParamRandomPitch,     0.0f,   12.0f,   0.0f,   "RND",  "st", false },
     };
 
     for (uint32_t i = 0; i < kNumSmallKnobs; ++i)
     {
-        const float cx = startX + i * (smallR * 2.0f + gapX);
-        const float cy = stripY + stripH * 0.5f;
-        small[i] = { cx, cy, smallR, sdefs[i].p, sdefs[i].minV, sdefs[i].maxV, sdefs[i].defV, sdefs[i].label, sdefs[i].unit, sdefs[i].bipolar, sdefs[i].defV };
+        small[i] = { startX + i * step, row2cy, smallR,
+                     sdefs[i].p, sdefs[i].minV, sdefs[i].maxV, sdefs[i].defV,
+                     sdefs[i].label, sdefs[i].unit, sdefs[i].bipolar, sdefs[i].defV };
     }
 
-    // LFO knobs (MOD section) — small knobs
+    // LFO knobs: MOD — placed after AMP/ENV with a section gap
+    const float lfoStartX = startX + kNumSmallKnobs * step + 40.0f;
     const struct { uint32_t p; float minV; float maxV; float defV; const char* label; const char* unit; bool bipolar; } ldefs[kNumLfoKnobs] = {
         { kParamLfo1RateHz, 0.01f, 20.0f, 0.25f, "L1 RT",  "Hz", false },
-        { kParamLfo1Shape,  0.0f,  4.0f,  0.0f,  "L1 SH",  "", false },
-        { kParamLfo1Amp,    0.0f,  1.0f,  1.0f,  "L1 AMP", "", false },
+        { kParamLfo1Shape,  0.0f,  4.0f,  0.0f,  "L1 SH",  "",   false },
+        { kParamLfo1Amp,    0.0f,  1.0f,  1.0f,  "L1 AMP", "",   false },
         { kParamLfo2RateHz, 0.01f, 20.0f, 0.10f, "L2 RT",  "Hz", false },
-        { kParamLfo2Shape,  0.0f,  4.0f,  0.0f,  "L2 SH",  "", false },
-        { kParamLfo2Amp,    0.0f,  1.0f,  1.0f,  "L2 AMP", "", false },
+        { kParamLfo2Shape,  0.0f,  4.0f,  0.0f,  "L2 SH",  "",   false },
+        { kParamLfo2Amp,    0.0f,  1.0f,  1.0f,  "L2 AMP", "",   false },
     };
 
-    // Place LFO knobs after AMP/ENV knobs.
-    const float lfoStartX = startX + kNumSmallKnobs * (smallR * 2.0f + gapX) + 40.0f;
     for (uint32_t i = 0; i < kNumLfoKnobs; ++i)
     {
-        const float cx = lfoStartX + i * (smallR * 2.0f + gapX);
-        const float cy = stripY + stripH * 0.5f;
-        lfo[i] = { cx, cy, smallR, ldefs[i].p, ldefs[i].minV, ldefs[i].maxV, ldefs[i].defV, ldefs[i].label, ldefs[i].unit, ldefs[i].bipolar, ldefs[i].defV };
+        lfo[i] = { lfoStartX + i * step, row2cy, smallR,
+                   ldefs[i].p, ldefs[i].minV, ldefs[i].maxV, ldefs[i].defV,
+                   ldefs[i].label, ldefs[i].unit, ldefs[i].bipolar, ldefs[i].defV };
     }
-
-    // Hero knobs (GRAINS) — small size, placed after LFOs
-    const float heroR = smallR;
-    const float heroGapX = 24.0f;
-    const float heroY = stripY + stripH * 0.5f;
-    const float heroStartX = lfoStartX + kNumLfoKnobs * (smallR * 2.0f + gapX) + 50.0f;
-
-    for (uint32_t i = 0; i < kNumHeroKnobs; ++i)
-    {
-        const float cx = heroStartX + i * (heroR * 2.0f + heroGapX);
-        const float cy = heroY;
-        hero[i] = { cx, cy, heroR, hdefs[i].p, hdefs[i].minV, hdefs[i].maxV, hdefs[i].defV, hdefs[i].label, hdefs[i].unit, hdefs[i].bipolar, hdefs[i].defV };
-    }
-
-    // Filter knobs in right column lower sub-panel
-    const float filtY = waveY + waveH * 0.55f + 20.0f + 22.0f;
-    const float filtStepX = colW * 0.33f;
-    const float filt0x = colX + filtStepX * 0.5f;
-    filterKnobs[0] = { filt0x, filtY, 22.0f, kParamFilterCutoff, 20.0f, 20000.0f, 40.0f, "CUT", "Hz", false, 40.0f };
-    filterKnobs[1] = { filt0x + filtStepX, filtY, 22.0f, kParamFilterRes, 0.0f, 1.0f, 0.0f, "RES", "", false, 0.0f };
 
     // init cached values (host will call parameterChanged too)
-    for (uint32_t i = 0; i < kNumMacroKnobs; ++i) macro[i].value = macro[i].defV;
-    for (uint32_t i = 0; i < kNumHeroKnobs; ++i)  hero[i].value = hero[i].defV;
-    for (uint32_t i = 0; i < kNumSmallKnobs; ++i) small[i].value = small[i].defV;
-    for (uint32_t i = 0; i < kNumLfoKnobs; ++i)   lfo[i].value = lfo[i].defV;
+    for (uint32_t i = 0; i < kNumMacroKnobs; ++i)  macro[i].value       = macro[i].defV;
+    for (uint32_t i = 0; i < kNumHeroKnobs; ++i)   hero[i].value        = hero[i].defV;
+    for (uint32_t i = 0; i < kNumSmallKnobs; ++i)  small[i].value       = small[i].defV;
+    for (uint32_t i = 0; i < kNumLfoKnobs; ++i)    lfo[i].value         = lfo[i].defV;
     for (uint32_t i = 0; i < kNumFilterKnobs; ++i) filterKnobs[i].value = filterKnobs[i].defV;
 }
 
@@ -442,14 +435,14 @@ bool GristUI::hitTestModBox(float x, float y, int& outTarget, int& outSlot) cons
         }
     }
 
-    // Filter cutoff mod boxes
+    // Filter cutoff mod boxes (filterKnobs[1] is CUT)
     {
-        const Knob& ck = filterKnobs[0];
+        const Knob& ck = filterKnobs[1];
         const float bsz = 12.0f;
         const float gap = 6.0f;
         const float slotsW = kSlotsPerTarget * bsz + (kSlotsPerTarget - 1) * gap;
         const float bx0 = ck.x - slotsW * 0.5f;
-        const float by0 = ck.y + ck.r + 12.0f;
+        const float by0 = ck.y + ck.r + 14.0f;
         for (uint32_t s = 0; s < kSlotsPerTarget; ++s)
         {
             const float bx = bx0 + float(s) * (bsz + gap);
@@ -1138,6 +1131,13 @@ void GristUI::formatKnobValue(const Knob& k, char* buf, size_t bufSize) const
         return;
     }
 
+    // Filter type
+    if (k.param == kParamFilterType)
+    {
+        std::snprintf(buf, bufSize, "%s", k.value >= 0.5f ? "LPF" : "HPF");
+        return;
+    }
+
     // Human-readable millisecond formatting
     if (k.unit && std::strcmp(k.unit, "ms") == 0)
     {
@@ -1643,15 +1643,12 @@ void GristUI::onNanoDisplay()
         }
     }
 
-    // Right column — two sub-panels: MACROS (top) + FILTER (bottom)
-    const float colX = waveX + waveW + 18.0f;
-    const float colW = float(DISTRHO_UI_DEFAULT_WIDTH) - 18.0f - colX;
-    const float colSplit = waveY + waveH * 0.52f; // split point
-
-    // MACROS panel
+    // Right column — MACROS only (filter moved to bottom strip)
     {
+        const float colX = waveX + waveW + 18.0f;
+        const float colW = float(DISTRHO_UI_DEFAULT_WIDTH) - 18.0f - colX;
         beginPath();
-        roundedRect(colX, waveY, colW, colSplit - waveY, 14.0f);
+        roundedRect(colX, waveY, colW, waveH, 14.0f);
         fillColor(T.panel[0], T.panel[1], T.panel[2]);
         fill();
         strokeColor(T.stroke[0], T.stroke[1], T.stroke[2]);
@@ -1665,37 +1662,7 @@ void GristUI::onNanoDisplay()
             drawKnob(macro[i], activeKnobGroup == 0 && activeKnobIndex == (int)i);
     }
 
-    // FILTER panel
-    {
-        const float fpY = colSplit + 4.0f;
-        const float fpH = waveY + waveH - fpY;
-        beginPath();
-        roundedRect(colX, fpY, colW, fpH, 14.0f);
-        fillColor(T.panel[0], T.panel[1], T.panel[2]);
-        fill();
-        strokeColor(T.stroke[0], T.stroke[1], T.stroke[2]);
-        strokeWidth(1.0f);
-        stroke();
-        fontSize(10.5f);
-        fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
-        textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
-        text(colX + 18.0f, fpY + 14.0f, "HPF", nullptr);
-        for (uint32_t i = 0; i < kNumFilterKnobs; ++i)
-            drawKnob(filterKnobs[i], activeKnobGroup == 5 && activeKnobIndex == (int)i);
-
-        // mod slots for filter cutoff
-        {
-            const Knob& ck = filterKnobs[0];
-            const float bs = 12.0f;
-            const float gap = 6.0f;
-            const float slotsW = kSlotsPerTarget * bs + (kSlotsPerTarget - 1) * gap;
-            const float bx0 = ck.x - slotsW * 0.5f;
-            const float by0 = ck.y + ck.r + 12.0f;
-            drawModSlotsForParam(ck.param, bx0, by0);
-        }
-    }
-
-    // bottom strip panel (full width): AMP/ENV on left + GRAINS on right
+    // bottom strip panel (full width) — 2 rows
     const float stripY = waveY + waveH + 18.0f;
     const float stripH = float(DISTRHO_UI_DEFAULT_HEIGHT) - stripY - 18.0f;
 
@@ -1707,38 +1674,67 @@ void GristUI::onNanoDisplay()
     strokeWidth(1.0f);
     stroke();
 
+    // Row divider
+    {
+        const float divY = stripY + stripH * 0.5f;
+        beginPath();
+        moveTo(waveX + 18.0f, divY);
+        lineTo(waveX + float(DISTRHO_UI_DEFAULT_WIDTH) - 54.0f, divY);
+        strokeColor(T.stroke[0], T.stroke[1], T.stroke[2]);
+        strokeWidth(1.0f);
+        stroke();
+    }
+
+    // Row 1 labels
     fontSize(10.5f);
     fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
     textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
-    text(waveX + 18.0f, stripY + 14.0f, "AMP / ENV", nullptr);
+    {
+        const float row1LabelY = hero[0].y - hero[0].r - 22.0f;
+        text(hero[0].x - hero[0].r, row1LabelY, "GRAINS", nullptr);
+        text(filterKnobs[0].x - filterKnobs[0].r, row1LabelY, "FILTER", nullptr);
+    }
 
-    // GRAINS label near the first hero knob
-    if (kNumHeroKnobs > 0)
-        text(hero[0].x - hero[0].r, stripY + 14.0f, "GRAINS", nullptr);
+    // Row 2 labels
+    {
+        const float row2LabelY = small[0].y - small[0].r - 22.0f;
+        text(small[0].x - small[0].r, row2LabelY, "AMP / ENV", nullptr);
+        text(lfo[0].x - lfo[0].r, row2LabelY, "MOD", nullptr);
+    }
 
-    for (uint32_t i = 0; i < kNumSmallKnobs; ++i)
-        drawKnob(small[i], activeKnobGroup == 2 && activeKnobIndex == (int)i);
-
-    // MOD section (LFOs)
-    fontSize(10.5f);
-    fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
-    textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
-    text(lfo[0].x - lfo[0].r, stripY + 14.0f, "MOD", nullptr);
-
-    for (uint32_t i = 0; i < kNumLfoKnobs; ++i)
-        drawKnob(lfo[i], activeKnobGroup == 3 && activeKnobIndex == (int)i);
-
+    // Row 1: GRAINS hero knobs + mod slots
     for (uint32_t i = 0; i < kNumHeroKnobs; ++i)
     {
         drawKnob(hero[i], activeKnobGroup == 1 && activeKnobIndex == (int)i);
-        // mod slots below knob (centered)
         const float bs = 12.0f;
         const float gap = 6.0f;
         const float slotsW = kSlotsPerTarget * bs + (kSlotsPerTarget - 1) * gap;
         const float bx = hero[i].x - slotsW * 0.5f;
-        const float by = hero[i].y + hero[i].r + 44.0f;
+        const float by = hero[i].y + hero[i].r + 14.0f;
         drawModSlotsForParam(hero[i].param, bx, by);
     }
+
+    // Row 1: FILTER knobs + mod slots for cutoff
+    for (uint32_t i = 0; i < kNumFilterKnobs; ++i)
+        drawKnob(filterKnobs[i], activeKnobGroup == 5 && activeKnobIndex == (int)i);
+    {
+        // mod slots below cutoff knob (filterKnobs[1])
+        const Knob& ck = filterKnobs[1];
+        const float bs = 12.0f;
+        const float gap = 6.0f;
+        const float slotsW = kSlotsPerTarget * bs + (kSlotsPerTarget - 1) * gap;
+        const float bx0 = ck.x - slotsW * 0.5f;
+        const float by0 = ck.y + ck.r + 14.0f;
+        drawModSlotsForParam(ck.param, bx0, by0);
+    }
+
+    // Row 2: AMP/ENV small knobs
+    for (uint32_t i = 0; i < kNumSmallKnobs; ++i)
+        drawKnob(small[i], activeKnobGroup == 2 && activeKnobIndex == (int)i);
+
+    // Row 2: MOD LFO knobs
+    for (uint32_t i = 0; i < kNumLfoKnobs; ++i)
+        drawKnob(lfo[i], activeKnobGroup == 3 && activeKnobIndex == (int)i);
 
     // Sample range mod boxes (below waveform panel)
     if (tab == Tab::Perform)
