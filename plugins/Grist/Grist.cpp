@@ -63,8 +63,15 @@ Grist::Grist()
       fLatch(0.0f),
       fLfo1RateHz(0.25f),
       fLfo1Shape(0.0f),
+      fLfo1Amp(1.0f),
       fLfo2RateHz(0.10f),
       fLfo2Shape(0.0f),
+      fLfo2Amp(1.0f),
+      fFilterCutoff(40.0f),
+      fFilterRes(0.0f),
+      fPitchLock(0.0f),
+      fBqX1L(0.0f), fBqX2L(0.0f), fBqY1L(0.0f), fBqY2L(0.0f),
+      fBqX1R(0.0f), fBqX2R(0.0f), fBqY1R(0.0f), fBqY2R(0.0f),
       fX(0.0f),
       fY(0.0f),
       fSampleStart01(0.0f),
@@ -573,6 +580,48 @@ void Grist::initParameter(uint32_t index, Parameter& parameter)
         parameter.ranges.min = 0.0f;
         parameter.ranges.max = 1.0f;
         break;
+
+    case kParamLfo1Amp:
+        parameter.name = "LFO1 Amp";
+        parameter.symbol = "lfo1_amp";
+        parameter.ranges.def = 1.0f;
+        parameter.ranges.min = 0.0f;
+        parameter.ranges.max = 1.0f;
+        break;
+
+    case kParamLfo2Amp:
+        parameter.name = "LFO2 Amp";
+        parameter.symbol = "lfo2_amp";
+        parameter.ranges.def = 1.0f;
+        parameter.ranges.min = 0.0f;
+        parameter.ranges.max = 1.0f;
+        break;
+
+    case kParamFilterCutoff:
+        parameter.name = "Filter Cutoff";
+        parameter.symbol = "filter_cutoff";
+        parameter.unit = "Hz";
+        parameter.ranges.def = 40.0f;
+        parameter.ranges.min = 20.0f;
+        parameter.ranges.max = 20000.0f;
+        break;
+
+    case kParamFilterRes:
+        parameter.name = "Filter Resonance";
+        parameter.symbol = "filter_res";
+        parameter.ranges.def = 0.0f;
+        parameter.ranges.min = 0.0f;
+        parameter.ranges.max = 1.0f;
+        break;
+
+    case kParamPitchLock:
+        parameter.name = "Pitch Lock";
+        parameter.symbol = "pitch_lock";
+        parameter.hints |= kParameterIsBoolean;
+        parameter.ranges.def = 0.0f;
+        parameter.ranges.min = 0.0f;
+        parameter.ranges.max = 1.0f;
+        break;
     }
 }
 
@@ -596,8 +645,10 @@ float Grist::getParameterValue(uint32_t index) const
 
     case kParamLfo1RateHz: return fLfo1RateHz;
     case kParamLfo1Shape: return fLfo1Shape;
+    case kParamLfo1Amp: return fLfo1Amp;
     case kParamLfo2RateHz: return fLfo2RateHz;
     case kParamLfo2Shape: return fLfo2Shape;
+    case kParamLfo2Amp: return fLfo2Amp;
     case kParamX: return fX;
     case kParamY: return fY;
     case kParamMacro1: return fMacro[0];
@@ -611,6 +662,9 @@ float Grist::getParameterValue(uint32_t index) const
     case kParamSampleStart: return fSampleStart01 * 100.0f;
     case kParamSampleEnd: return fSampleEnd01 * 100.0f;
     case kParamLatch: return fLatch;
+    case kParamFilterCutoff: return fFilterCutoff;
+    case kParamFilterRes: return fFilterRes;
+    case kParamPitchLock: return fPitchLock;
 
     default: return 0.0f;
     }
@@ -666,12 +720,17 @@ void Grist::setParameterValue(uint32_t index, float value)
     case kParamLfo1Shape:
         fLfo1Shape = fclampf(std::round(value), 0.0f, 4.0f);
         break;
+    case kParamLfo1Amp: fLfo1Amp = fclampf(value, 0.0f, 1.0f); break;
     case kParamLfo2RateHz:
         fLfo2RateHz = fclampf(value, 0.01f, 20.0f);
         break;
     case kParamLfo2Shape:
         fLfo2Shape = fclampf(std::round(value), 0.0f, 4.0f);
         break;
+    case kParamLfo2Amp: fLfo2Amp = fclampf(value, 0.0f, 1.0f); break;
+    case kParamFilterCutoff: fFilterCutoff = fclampf(value, 20.0f, 20000.0f); break;
+    case kParamFilterRes: fFilterRes = fclampf(value, 0.0f, 1.0f); break;
+    case kParamPitchLock: fPitchLock = (value >= 0.5f) ? 1.0f : 0.0f; break;
 
     case kParamX:
         fX = fclampf(value, -1.0f, 1.0f);
@@ -1243,8 +1302,8 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
         if (lfo1Phase >= 1.0f) lfo1Phase -= std::floor(lfo1Phase);
         if (lfo2Phase >= 1.0f) lfo2Phase -= std::floor(lfo2Phase);
 
-        const float lfo1 = lfoValue(lfo1Phase, lfo1Shape, lfo1Hold);
-        const float lfo2 = lfoValue(lfo2Phase, lfo2Shape, lfo2Hold);
+        float lfo1 = lfoValue(lfo1Phase, lfo1Shape, lfo1Hold) * fLfo1Amp;
+        float lfo2 = lfoValue(lfo2Phase, lfo2Shape, lfo2Hold) * fLfo2Amp;
 
         float mixL = 0.0f;
         float mixR = 0.0f;
@@ -1375,7 +1434,7 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
 
                         const double start = (double)pos01 * (double)(len - 2);
 
-                        const double noteMul = midiNoteToHz(voice.note) / midiNoteToHz(60);
+                        const double noteMul = (fPitchLock >= 0.5f) ? 1.0 : midiNoteToHz(voice.note) / midiNoteToHz(60);
                         const double pitchMul = std::pow(2.0, (double)pitchSt / 12.0);
                         const double srMul = (double)s->sampleRate / fSampleRate;
                         const double pitchEnvMul = std::pow(2.0, (double)voice.pitchEnv / 12.0);
@@ -1476,6 +1535,81 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
         // Gentle output soft-clip (keeps boost usable without harsh clipping)
         outL[i] = std::tanh(outL[i]);
         outR[i] = std::tanh(outR[i]);
+    }
+
+    // --- Resonant biquad HPF (stereo, applied per block) ---
+    {
+        // Compute modulated filter cutoff
+        float fcMod = 0.0f;
+        // Use the last LFO values from the frame loop (lfo1/lfo2 are block-level locals
+        // captured below by recomputing from current phases)
+        const float lfo1Blk = lfoValue(lfo1Phase, (int)fLfo1Shape, lfo1Hold) * fLfo1Amp;
+        const float lfo2Blk = lfoValue(lfo2Phase, (int)fLfo2Shape, lfo2Hold) * fLfo2Amp;
+        {
+            float m = 0.0f;
+            for (uint32_t si = 0; si < GristMod::kMaxSlotsPerTarget; ++si)
+            {
+                const auto& sl = modMatrix.slots[(uint32_t)GristMod::Target::FilterCutoff][si];
+                if (sl.source == GristMod::Source::None || sl.amount == 0.0f) continue;
+                float sv = 0.0f;
+                switch (sl.source) {
+                    case GristMod::Source::LFO1: sv = lfo1Blk; break;
+                    case GristMod::Source::LFO2: sv = lfo2Blk; break;
+                    case GristMod::Source::X: sv = fX; break;
+                    case GristMod::Source::Y: sv = fY; break;
+                    case GristMod::Source::Macro1: sv = fMacro[0]; break;
+                    case GristMod::Source::Macro2: sv = fMacro[1]; break;
+                    case GristMod::Source::Macro3: sv = fMacro[2]; break;
+                    case GristMod::Source::Macro4: sv = fMacro[3]; break;
+                    case GristMod::Source::Macro5: sv = fMacro[4]; break;
+                    case GristMod::Source::Macro6: sv = fMacro[5]; break;
+                    case GristMod::Source::Macro7: sv = fMacro[6]; break;
+                    case GristMod::Source::Macro8: sv = fMacro[7]; break;
+                    default: sv = 0.0f; break;
+                }
+                m += sv * sl.amount;
+            }
+            fcMod = fclampf(m, -1.0f, 1.0f);
+        }
+
+        // Effective cutoff: base * 2^(mod * 4 octaves)
+        const float fc = fclampf(fFilterCutoff * std::pow(2.0f, fcMod * 4.0f), 20.0f, (float)(fSampleRate * 0.48));
+
+        // Q from resonance: 0->0.707, 1->12
+        const float Q = 0.707f + fFilterRes * 11.293f;
+
+        // Biquad HPF coefficients
+        const float w0 = 2.0f * 3.14159265f * fc / (float)fSampleRate;
+        const float cosW0 = std::cos(w0);
+        const float sinW0 = std::sin(w0);
+        const float alpha = sinW0 / (2.0f * Q);
+
+        const float a0r = 1.0f / (1.0f + alpha);
+        const float bqB0 = (1.0f + cosW0) * 0.5f * a0r;
+        const float bqB1 = -(1.0f + cosW0) * a0r;
+        const float bqB2 = (1.0f + cosW0) * 0.5f * a0r;
+        const float bqA1 = -2.0f * cosW0 * a0r;
+        const float bqA2 = (1.0f - alpha) * a0r;
+
+        // Apply filter sample-by-sample to outputs
+        float* outL = outputs[0];
+        float* outR = outputs[1];
+        for (uint32_t i = 0; i < frames; ++i)
+        {
+            const float inL = outL[i];
+            const float yL = bqB0 * inL + bqB1 * fBqX1L + bqB2 * fBqX2L
+                           - bqA1 * fBqY1L - bqA2 * fBqY2L;
+            fBqX2L = fBqX1L; fBqX1L = inL;
+            fBqY2L = fBqY1L; fBqY1L = yL;
+            outL[i] = yL;
+
+            const float inR = outR[i];
+            const float yR = bqB0 * inR + bqB1 * fBqX1R + bqB2 * fBqX2R
+                           - bqA1 * fBqY1R - bqA2 * fBqY2R;
+            fBqX2R = fBqX1R; fBqX1R = inR;
+            fBqY2R = fBqY1R; fBqY1R = yR;
+            outR[i] = yR;
+        }
     }
 
     // Publish grain viz to UI at ~30 Hz (best-effort).

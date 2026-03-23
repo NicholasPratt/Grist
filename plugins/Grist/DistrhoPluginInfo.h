@@ -52,8 +52,10 @@ enum Parameters {
     // --- modulation sources (automatable) ---
     kParamLfo1RateHz,
     kParamLfo1Shape,
+    kParamLfo1Amp,
     kParamLfo2RateHz,
     kParamLfo2Shape,
+    kParamLfo2Amp,
 
     // XY performance pad (can be automated / MIDI-mapped)
     kParamX,
@@ -74,6 +76,10 @@ enum Parameters {
     kParamSampleEnd,
 
     kParamLatch,
+
+    kParamFilterCutoff,
+    kParamFilterRes,
+    kParamPitchLock,
 
     kParamCount
 };

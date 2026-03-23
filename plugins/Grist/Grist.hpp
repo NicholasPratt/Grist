@@ -68,8 +68,17 @@ private:
     // Modulation source parameters
     float fLfo1RateHz;
     float fLfo1Shape;
+    float fLfo1Amp;
     float fLfo2RateHz;
     float fLfo2Shape;
+    float fLfo2Amp;
+    float fFilterCutoff;   // Hz, 20..20000
+    float fFilterRes;      // 0..1
+    float fPitchLock;      // 0/1
+
+    // Stereo biquad HPF state
+    float fBqX1L, fBqX2L, fBqY1L, fBqY2L;
+    float fBqX1R, fBqX2R, fBqY1R, fBqY2R;
 
     float fX;
     float fY;

@@ -41,6 +41,7 @@ enum class Target : uint8_t {
     Pitch,          // semitones
     SampleStart,    // 0..1 offset applied to grain playback start boundary
     SampleEnd,      // 0..1 offset applied to grain playback end boundary
+    FilterCutoff,   // cutoff modulation (additive octaves * amount)
     COUNT
 };
 
@@ -91,6 +92,7 @@ struct Matrix {
         if (streq(id, "pitch")) return Target::Pitch;
         if (streq(id, "sstart")) return Target::SampleStart;
         if (streq(id, "send"))   return Target::SampleEnd;
+        if (streq(id, "fcut"))   return Target::FilterCutoff;
         return Target::Position;
     }
 };

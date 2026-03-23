@@ -63,9 +63,11 @@ private:
     float btn2X, btn2Y, btn2W, btn2H;      // load
     float btnPlayX, btnPlayY, btnPlayW, btnPlayH; // preview play/stop
     float btnLatchX, btnLatchY, btnLatchW, btnLatchH; // latch toggle
+    float btnPitchLockX, btnPitchLockY, btnPitchLockW, btnPitchLockH; // pitch lock toggle
     float tabX, tabY, tabW, tabH;
 
     bool latchOn = false; // cached UI state
+    bool pitchLockOn = false;
 
     char sampleLabel[200];
 
@@ -73,17 +75,19 @@ private:
     static constexpr uint32_t kNumMacroKnobs = 2;
     static constexpr uint32_t kNumHeroKnobs  = 5;
     static constexpr uint32_t kNumSmallKnobs = 6; // AMP/ENV
-    static constexpr uint32_t kNumLfoKnobs = 4;   // LFO1 rate/shape, LFO2 rate/shape
+    static constexpr uint32_t kNumLfoKnobs = 6;   // LFO1 rate/shape/amp, LFO2 rate/shape/amp
+    static constexpr uint32_t kNumFilterKnobs = 2; // HPF Cutoff + Resonance
     static constexpr uint32_t kNumXYMacros = 8;
 
     Knob macro[kNumMacroKnobs];
     Knob hero[kNumHeroKnobs];
     Knob small[kNumSmallKnobs];
     Knob lfo[kNumLfoKnobs];
+    Knob filterKnobs[kNumFilterKnobs]; // HPF Cutoff + Resonance
     Knob xyMacros[kNumXYMacros]; // macro knobs shown on XY tab
     float xyMacroY = 0.0f;       // y-centre of XY macro strip
 
-    int activeKnobGroup = -1; // 0=macro,1=hero,2=small,3=lfo
+    int activeKnobGroup = -1; // 0=macro,1=hero,2=small,3=lfo,4=xyMacros,5=filterKnobs
     int activeKnobIndex = -1;
     float knobDragStartY = 0.0f;
     float knobDragStartValue = 0.0f;
@@ -126,6 +130,7 @@ private:
         Pitch,
         SampleStart,
         SampleEnd,
+        FilterCutoff,
         COUNT
     };
 

@@ -147,6 +147,12 @@ void GristUI::layoutPerform()
     btnLatchX = btnPlayX + btnPlayW + 10.0f;
     btnLatchY = tabY;
 
+    // Pitch Lock toggle button
+    btnPitchLockW = 100.0f;
+    btnPitchLockH = tabH;
+    btnPitchLockX = btnLatchX + btnLatchW + 10.0f;
+    btnPitchLockY = tabY;
+
     // Reload on right
     btnW = 190.0f;
     btnX = float(DISTRHO_UI_DEFAULT_WIDTH) - 18.0f - btnW;
@@ -194,7 +200,7 @@ void GristUI::initKnobs()
     const float colW = float(DISTRHO_UI_DEFAULT_WIDTH) - 18.0f - colX;
 
     // Macros: slightly smaller so the panel breathes
-    const float macroR = 38.0f;
+    const float macroR = 28.0f;
     const float macroGapX = 22.0f;
     const float macroGapY = 14.0f;
 
@@ -233,7 +239,7 @@ void GristUI::initKnobs()
     // Small knobs (AMP/ENV)
     const float smallR = 22.0f;
     const float startX = waveX + 18.0f + smallR;
-    const float gapX = 24.0f;
+    const float gapX = 16.0f;
 
     const struct { uint32_t p; float minV; float maxV; float defV; const char* label; const char* unit; bool bipolar; } sdefs[kNumSmallKnobs] = {
         { kParamGain,           0.0f, 2.0f,    1.0f,  "GAIN", "", false },
@@ -253,10 +259,12 @@ void GristUI::initKnobs()
 
     // LFO knobs (MOD section) — small knobs
     const struct { uint32_t p; float minV; float maxV; float defV; const char* label; const char* unit; bool bipolar; } ldefs[kNumLfoKnobs] = {
-        { kParamLfo1RateHz, 0.01f, 20.0f, 0.25f, "LFO1", "Hz", false },
-        { kParamLfo1Shape,  0.0f,  4.0f,  0.0f,  "SHAPE", "", false },
-        { kParamLfo2RateHz, 0.01f, 20.0f, 0.10f, "LFO2", "Hz", false },
-        { kParamLfo2Shape,  0.0f,  4.0f,  0.0f,  "SHAPE", "", false },
+        { kParamLfo1RateHz, 0.01f, 20.0f, 0.25f, "L1 RT",  "Hz", false },
+        { kParamLfo1Shape,  0.0f,  4.0f,  0.0f,  "L1 SH",  "", false },
+        { kParamLfo1Amp,    0.0f,  1.0f,  1.0f,  "L1 AMP", "", false },
+        { kParamLfo2RateHz, 0.01f, 20.0f, 0.10f, "L2 RT",  "Hz", false },
+        { kParamLfo2Shape,  0.0f,  4.0f,  0.0f,  "L2 SH",  "", false },
+        { kParamLfo2Amp,    0.0f,  1.0f,  1.0f,  "L2 AMP", "", false },
     };
 
     // Place LFO knobs after AMP/ENV knobs.
@@ -281,11 +289,19 @@ void GristUI::initKnobs()
         hero[i] = { cx, cy, heroR, hdefs[i].p, hdefs[i].minV, hdefs[i].maxV, hdefs[i].defV, hdefs[i].label, hdefs[i].unit, hdefs[i].bipolar, hdefs[i].defV };
     }
 
+    // Filter knobs in right column lower sub-panel
+    const float filtY = waveY + waveH * 0.55f + 20.0f + 22.0f;
+    const float filtStepX = colW * 0.33f;
+    const float filt0x = colX + filtStepX * 0.5f;
+    filterKnobs[0] = { filt0x, filtY, 22.0f, kParamFilterCutoff, 20.0f, 20000.0f, 40.0f, "CUT", "Hz", false, 40.0f };
+    filterKnobs[1] = { filt0x + filtStepX, filtY, 22.0f, kParamFilterRes, 0.0f, 1.0f, 0.0f, "RES", "", false, 0.0f };
+
     // init cached values (host will call parameterChanged too)
     for (uint32_t i = 0; i < kNumMacroKnobs; ++i) macro[i].value = macro[i].defV;
     for (uint32_t i = 0; i < kNumHeroKnobs; ++i)  hero[i].value = hero[i].defV;
     for (uint32_t i = 0; i < kNumSmallKnobs; ++i) small[i].value = small[i].defV;
     for (uint32_t i = 0; i < kNumLfoKnobs; ++i)   lfo[i].value = lfo[i].defV;
+    for (uint32_t i = 0; i < kNumFilterKnobs; ++i) filterKnobs[i].value = filterKnobs[i].defV;
 }
 
 void GristUI::setParamFromValue(uint32_t param, float v)
@@ -315,6 +331,7 @@ bool GristUI::hitTestKnob(float x, float y, int& outGroup, int& outIndex) const
     if (hit(small, kNumSmallKnobs, 2)) return true;
     if (hit(lfo,   kNumLfoKnobs,   3)) return true;
     if (hit(xyMacros, kNumXYMacros, 4)) return true;
+    if (hit(filterKnobs, kNumFilterKnobs, 5)) return true;
     return false;
 }
 
@@ -425,6 +442,26 @@ bool GristUI::hitTestModBox(float x, float y, int& outTarget, int& outSlot) cons
         }
     }
 
+    // Filter cutoff mod boxes
+    {
+        const Knob& ck = filterKnobs[0];
+        const float bsz = 12.0f;
+        const float gap = 6.0f;
+        const float slotsW = kSlotsPerTarget * bsz + (kSlotsPerTarget - 1) * gap;
+        const float bx0 = ck.x - slotsW * 0.5f;
+        const float by0 = ck.y + ck.r + 12.0f;
+        for (uint32_t s = 0; s < kSlotsPerTarget; ++s)
+        {
+            const float bx = bx0 + float(s) * (bsz + gap);
+            if (x >= bx && x <= bx + bsz && y >= by0 && y <= by0 + bsz)
+            {
+                outTarget = (int)ModTarget::FilterCutoff;
+                outSlot   = (int)s;
+                return true;
+            }
+        }
+    }
+
     return false;
 }
 
@@ -439,7 +476,8 @@ void GristUI::parameterChanged(uint32_t index, float value)
 
     if (index == kParamSampleStart) sampleStart01 = fclampf(value / 100.0f, 0.0f, 1.0f);
     if (index == kParamSampleEnd)   sampleEnd01   = fclampf(value / 100.0f, 0.0f, 1.0f);
-    if (index == kParamLatch)       latchOn = (value >= 0.5f);
+    if (index == kParamLatch)       latchOn      = (value >= 0.5f);
+    if (index == kParamPitchLock)   pitchLockOn  = (value >= 0.5f);
 
     auto upd = [&](Knob* ks, uint32_t n) {
         for (uint32_t i = 0; i < n; ++i)
@@ -452,6 +490,7 @@ void GristUI::parameterChanged(uint32_t index, float value)
     upd(small, kNumSmallKnobs);
     upd(lfo,   kNumLfoKnobs);
     upd(xyMacros, kNumXYMacros);
+    upd(filterKnobs, kNumFilterKnobs);
 
     repaint();
 }
@@ -744,6 +783,15 @@ bool GristUI::onMouse(const MouseEvent& ev)
             return true;
         }
 
+        // Pitch Lock toggle
+        if (mx >= btnPitchLockX && mx <= btnPitchLockX + btnPitchLockW && my >= btnPitchLockY && my <= btnPitchLockY + btnPitchLockH)
+        {
+            pitchLockOn = !pitchLockOn;
+            setParamFromValue(kParamPitchLock, pitchLockOn ? 1.0f : 0.0f);
+            repaint();
+            return true;
+        }
+
         if (tab == Tab::XY)
         {
             // XY macro knobs
@@ -874,7 +922,12 @@ bool GristUI::onMouse(const MouseEvent& ev)
             activeKnobIndex = k;
             knobDragStartY = my;
 
-            Knob* kk = (g == 0) ? &macro[k] : (g == 1) ? &hero[k] : (g == 2) ? &small[k] : &lfo[k];
+            Knob* kk = (g == 0) ? &macro[k]
+                 : (g == 1) ? &hero[k]
+                 : (g == 2) ? &small[k]
+                 : (g == 3) ? &lfo[k]
+                 : (g == 4) ? &xyMacros[k]
+                 : &filterKnobs[k];
             knobDragStartValue = kk->value;
             repaint();
             return true;
@@ -947,15 +1000,17 @@ bool GristUI::onMotion(const MotionEvent& ev)
             return true;
         }
 
-        if (!xyActive) return false;
-        const float nx = fclampf((mx - xyX) / xyW, 0.0f, 1.0f);
-        const float ny = fclampf((my - xyY) / xyH, 0.0f, 1.0f);
-        const float xv = nx * 2.0f - 1.0f;
-        const float yv = (1.0f - ny) * 2.0f - 1.0f;
-        setParamFromValue(kParamX, xv);
-        setParamFromValue(kParamY, yv);
-        repaint();
-        return true;
+        // Always update XY from cursor position in pad (theremin-style: no click required)
+        if (mx >= xyX && mx <= xyX + xyW && my >= xyY && my <= xyY + xyH)
+        {
+            const float nx = fclampf((mx - xyX) / xyW, 0.0f, 1.0f);
+            const float ny = fclampf((my - xyY) / xyH, 0.0f, 1.0f);
+            setParamFromValue(kParamX, nx * 2.0f - 1.0f);
+            setParamFromValue(kParamY, (1.0f - ny) * 2.0f - 1.0f);
+            repaint();
+            return true;
+        }
+        return false;
     }
 
     // Waveform range drag
@@ -1024,7 +1079,8 @@ bool GristUI::onMotion(const MotionEvent& ev)
                  : (activeKnobGroup == 1) ? &hero[activeKnobIndex]
                  : (activeKnobGroup == 2) ? &small[activeKnobIndex]
                  : (activeKnobGroup == 3) ? &lfo[activeKnobIndex]
-                 : &xyMacros[activeKnobIndex];
+                 : (activeKnobGroup == 4) ? &xyMacros[activeKnobIndex]
+                 : &filterKnobs[activeKnobIndex];
 
         const float dy = (knobDragStartY - my);
         // scaled by range; 160 px for full sweep
@@ -1259,6 +1315,32 @@ void GristUI::onNanoDisplay()
             fillColor(T.text[0], T.text[1], T.text[2]);
         textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
         text(x + w * 0.5f, y + h * 0.5f - 3.0f, "LATCH", nullptr);
+    }
+
+    // Pitch Lock toggle
+    {
+        const float x = btnPitchLockX, y = btnPitchLockY, w = btnPitchLockW, h = btnPitchLockH;
+        beginPath();
+        roundedRect(x, y, w, h, 10.0f);
+        if (pitchLockOn)
+            fillColor(T.neg[0] * 0.45f, T.neg[1] * 0.45f, T.neg[2] * 0.20f);
+        else
+            fillColor(T.panel2[0], T.panel2[1], T.panel2[2]);
+        fill();
+        beginPath();
+        roundedRect(x + 1.0f, y + 1.0f, w - 2.0f, h * 0.55f, 9.0f);
+        fillColor(1.0f, 1.0f, 1.0f, 0.05f);
+        fill();
+        strokeColor(pitchLockOn ? Color(T.neg[0], T.neg[1], T.neg[2], 0.9f)
+                                : Color(T.strokeHi[0], T.strokeHi[1], T.strokeHi[2], 1.0f));
+        strokeWidth(1.0f);
+        stroke();
+        fontSize(12.0f);
+        fillColor(pitchLockOn ? T.neg[0] : T.text[0],
+                  pitchLockOn ? T.neg[1] : T.text[1],
+                  pitchLockOn ? T.neg[2] : T.text[2]);
+        textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
+        text(x + w * 0.5f, y + h * 0.5f - 3.0f, "PITCH LOCK", nullptr);
     }
 
     // sample label
@@ -1561,29 +1643,56 @@ void GristUI::onNanoDisplay()
         }
     }
 
-    // Right panel: macros only
+    // Right column — two sub-panels: MACROS (top) + FILTER (bottom)
     const float colX = waveX + waveW + 18.0f;
     const float colW = float(DISTRHO_UI_DEFAULT_WIDTH) - 18.0f - colX;
+    const float colSplit = waveY + waveH * 0.52f; // split point
 
+    // MACROS panel
     {
-        const float colY = waveY;
-        const float colH = waveH;
-
         beginPath();
-        roundedRect(colX, colY, colW, colH, 14.0f);
+        roundedRect(colX, waveY, colW, colSplit - waveY, 14.0f);
         fillColor(T.panel[0], T.panel[1], T.panel[2]);
         fill();
         strokeColor(T.stroke[0], T.stroke[1], T.stroke[2]);
         strokeWidth(1.0f);
         stroke();
-
         fontSize(10.5f);
         fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
         textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
-        text(colX + 18.0f, colY + 16.0f, "MACROS", nullptr);
-
+        text(colX + 18.0f, waveY + 14.0f, "MACROS", nullptr);
         for (uint32_t i = 0; i < kNumMacroKnobs; ++i)
             drawKnob(macro[i], activeKnobGroup == 0 && activeKnobIndex == (int)i);
+    }
+
+    // FILTER panel
+    {
+        const float fpY = colSplit + 4.0f;
+        const float fpH = waveY + waveH - fpY;
+        beginPath();
+        roundedRect(colX, fpY, colW, fpH, 14.0f);
+        fillColor(T.panel[0], T.panel[1], T.panel[2]);
+        fill();
+        strokeColor(T.stroke[0], T.stroke[1], T.stroke[2]);
+        strokeWidth(1.0f);
+        stroke();
+        fontSize(10.5f);
+        fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
+        textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
+        text(colX + 18.0f, fpY + 14.0f, "HPF", nullptr);
+        for (uint32_t i = 0; i < kNumFilterKnobs; ++i)
+            drawKnob(filterKnobs[i], activeKnobGroup == 5 && activeKnobIndex == (int)i);
+
+        // mod slots for filter cutoff
+        {
+            const Knob& ck = filterKnobs[0];
+            const float bs = 12.0f;
+            const float gap = 6.0f;
+            const float slotsW = kSlotsPerTarget * bs + (kSlotsPerTarget - 1) * gap;
+            const float bx0 = ck.x - slotsW * 0.5f;
+            const float by0 = ck.y + ck.r + 12.0f;
+            drawModSlotsForParam(ck.param, bx0, by0);
+        }
     }
 
     // bottom strip panel (full width): AMP/ENV on left + GRAINS on right
@@ -2014,8 +2123,9 @@ bool GristUI::sliderToModTarget(uint32_t param, ModTarget& tgt) const
     if (param == kParamDensity)      { tgt = ModTarget::Density;     return true; }
     if (param == kParamSpray)        { tgt = ModTarget::Spray;       return true; }
     if (param == kParamPitch)        { tgt = ModTarget::Pitch;       return true; }
-    if (param == kParamSampleStart)  { tgt = ModTarget::SampleStart; return true; }
-    if (param == kParamSampleEnd)    { tgt = ModTarget::SampleEnd;   return true; }
+    if (param == kParamSampleStart)  { tgt = ModTarget::SampleStart;  return true; }
+    if (param == kParamSampleEnd)    { tgt = ModTarget::SampleEnd;    return true; }
+    if (param == kParamFilterCutoff) { tgt = ModTarget::FilterCutoff; return true; }
     return false;
 }
 
@@ -2048,8 +2158,9 @@ void GristUI::pushModMatrixState()
         case ModTarget::Density:     return "dens";
         case ModTarget::Spray:       return "spray";
         case ModTarget::Pitch:       return "pitch";
-        case ModTarget::SampleStart: return "sstart";
-        case ModTarget::SampleEnd:   return "send";
+        case ModTarget::SampleStart:  return "sstart";
+        case ModTarget::SampleEnd:    return "send";
+        case ModTarget::FilterCutoff: return "fcut";
         }
     };
 
@@ -2090,6 +2201,7 @@ void GristUI::parseModMatrixState(const char* value)
         if (std::strcmp(id, "pitch") == 0)  return (int)ModTarget::Pitch;
         if (std::strcmp(id, "sstart") == 0) return (int)ModTarget::SampleStart;
         if (std::strcmp(id, "send") == 0)   return (int)ModTarget::SampleEnd;
+        if (std::strcmp(id, "fcut") == 0)   return (int)ModTarget::FilterCutoff;
         return -1;
     };
 
