@@ -1229,9 +1229,11 @@ void GristUI::drawKnob(const Knob& k, bool active)
     fill();
 
     // label + value
-    const float labelY = k.y + r * 1.82f;
-    const float labelFont = fclampf(r * 0.57f, 9.0f, 12.5f);
-    const float valueFont = std::max(8.5f, labelFont - 1.4f);
+    // Keep the label font at the original size for the main UI knobs so it stays readable.
+    // (We still scale the geometry, but not the text.)
+    const float labelY = k.y + r + 18.0f;
+    const float labelFont = 12.5f;
+    const float valueFont = 11.0f;
 
     fillColor(T.text[0], T.text[1], T.text[2]);
     textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
@@ -1243,7 +1245,7 @@ void GristUI::drawKnob(const Knob& k, bool active)
 
     fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
     fontSize(valueFont);
-    text(k.x, labelY + r * 0.64f, buf, nullptr);
+    text(k.x, labelY + 14.0f, buf, nullptr);
 }
 
 void GristUI::onNanoDisplay()
