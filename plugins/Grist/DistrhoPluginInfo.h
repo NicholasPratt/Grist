@@ -83,6 +83,11 @@ enum Parameters {
 
     kParamFilterType,   // 0=HPF, 1=LPF
 
+    // Reverb
+    kParamRevMix,
+    kParamRevLength,
+    kParamRevHPF,
+
     kParamCount
 };
 

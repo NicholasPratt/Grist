@@ -71,8 +71,13 @@ Grist::Grist()
       fFilterRes(0.0f),
       fPitchLock(0.0f),
       fFilterType(0.0f),
+      fRevMix(0.0f),
+      fRevLength(0.50f),
+      fRevHPF(120.0f),
       fBqX1L(0.0f), fBqX2L(0.0f), fBqY1L(0.0f), fBqY2L(0.0f),
       fBqX1R(0.0f), fBqX2R(0.0f), fBqY1R(0.0f), fBqY2R(0.0f),
+      fRevHpX1L(0.0f), fRevHpX2L(0.0f), fRevHpY1L(0.0f), fRevHpY2L(0.0f),
+      fRevHpX1R(0.0f), fRevHpX2R(0.0f), fRevHpY1R(0.0f), fRevHpY2R(0.0f),
       fX(0.0f),
       fY(0.0f),
       fSampleStart01(0.0f),
@@ -121,6 +126,9 @@ Grist::Grist()
     modMatrix.slots[(uint32_t)GristMod::Target::Pitch][0].amount = 0.10f;
 
     for (int i = 0; i < 8; ++i) fMacro[i] = 0.0f;
+
+    reverbInit();
+    reverbUpdate();
 }
 
 uint32_t Grist::rngU32()
@@ -134,6 +142,119 @@ float Grist::rngFloat01()
 {
     // 24-bit mantissa
     return (float)((rngU32() >> 8) & 0x00FFFFFFu) / (float)0x01000000u;
+}
+
+// ---------------------------
+// Reverb
+// ---------------------------
+
+float Grist::reverbProcessComb(Comb& c, float x)
+{
+    if (c.buf.empty())
+        return x;
+
+    const float y = c.buf[c.idx];
+    // one-pole lowpass in feedback path (damping)
+    c.lp = (1.0f - c.damp) * y + c.damp * c.lp;
+    c.buf[c.idx] = x + c.lp * c.fb;
+    if (++c.idx >= c.buf.size()) c.idx = 0;
+    return y;
+}
+
+float Grist::reverbProcessAllpass(Allpass& a, float x)
+{
+    if (a.buf.empty())
+        return x;
+
+    const float b = a.buf[a.idx];
+    const float y = -x + b;
+    a.buf[a.idx] = x + b * a.fb;
+    if (++a.idx >= a.buf.size()) a.idx = 0;
+    return y;
+}
+
+void Grist::reverbInit()
+{
+    // Allocate buffers based on current sample rate and length parameter.
+    // Using Freeverb-ish prime-ish delays at 44.1kHz.
+    reverbUpdate();
+
+    // Reset filter state
+    fRevHpX1L = fRevHpX2L = fRevHpY1L = fRevHpY2L = 0.0f;
+    fRevHpX1R = fRevHpX2R = fRevHpY1R = fRevHpY2R = 0.0f;
+
+    for (int i = 0; i < 4; ++i)
+    {
+        revCombL[i].idx = 0; revCombL[i].lp = 0.0f;
+        revCombR[i].idx = 0; revCombR[i].lp = 0.0f;
+    }
+    for (int i = 0; i < 2; ++i)
+    {
+        revApL[i].idx = 0;
+        revApR[i].idx = 0;
+    }
+}
+
+void Grist::reverbUpdate()
+{
+    const double sr = std::max(1.0, fSampleRate);
+    const double srScale = sr / 44100.0;
+
+    const float len = fclampf(fRevLength, 0.0f, 1.0f);
+    const float mix = fclampf(fRevMix, 0.0f, 1.0f);
+    (void)mix;
+
+    // Length scales delay times and feedback.
+    const double timeScale = 0.35 + (1.25 - 0.35) * (double)len;
+    const float fb = 0.55f + (0.82f - 0.55f) * len;
+    const float damp = 0.15f + (0.35f - 0.15f) * len;
+
+    const int combBase[4] = {1116, 1188, 1277, 1356};
+    const int apBase[2]   = {556, 441};
+    const int stereoOffC[4] = {23, 41, 59, 73};
+    const int stereoOffA[2] = {19, 31};
+
+    for (int i = 0; i < 4; ++i)
+    {
+        const uint32_t nL = (uint32_t)std::max(1.0, std::floor((double)combBase[i] * srScale * timeScale));
+        const uint32_t nR = (uint32_t)std::max(1.0, std::floor((double)(combBase[i] + stereoOffC[i]) * srScale * timeScale));
+
+        if (revCombL[i].buf.size() != nL) { revCombL[i].buf.assign(nL, 0.0f); revCombL[i].idx = 0; revCombL[i].lp = 0.0f; }
+        if (revCombR[i].buf.size() != nR) { revCombR[i].buf.assign(nR, 0.0f); revCombR[i].idx = 0; revCombR[i].lp = 0.0f; }
+
+        revCombL[i].fb = fb;
+        revCombR[i].fb = fb;
+        revCombL[i].damp = damp;
+        revCombR[i].damp = damp;
+    }
+
+    for (int i = 0; i < 2; ++i)
+    {
+        const uint32_t nL = (uint32_t)std::max(1.0, std::floor((double)apBase[i] * srScale * timeScale));
+        const uint32_t nR = (uint32_t)std::max(1.0, std::floor((double)(apBase[i] + stereoOffA[i]) * srScale * timeScale));
+
+        if (revApL[i].buf.size() != nL) { revApL[i].buf.assign(nL, 0.0f); revApL[i].idx = 0; }
+        if (revApR[i].buf.size() != nR) { revApR[i].buf.assign(nR, 0.0f); revApR[i].idx = 0; }
+
+        revApL[i].fb = 0.5f;
+        revApR[i].fb = 0.5f;
+    }
+
+    // Reverb HPF biquad (Butterworth-ish)
+    const float fc = fclampf(fRevHPF, 20.0f, (float)(sr * 0.48));
+    const float Q = 0.707f;
+
+    const float w0 = 2.0f * 3.14159265f * fc / (float)sr;
+    const float cosW0 = std::cos(w0);
+    const float sinW0 = std::sin(w0);
+    const float alpha = sinW0 / (2.0f * Q);
+    const float a0r = 1.0f / (1.0f + alpha);
+
+    fRevHpB0 = (1.0f + cosW0) * 0.5f * a0r;
+    fRevHpB1 = -(1.0f + cosW0) * a0r;
+    fRevHpB2 = (1.0f + cosW0) * 0.5f * a0r;
+    fRevHpA1 = -2.0f * cosW0 * a0r;
+    fRevHpA2 = (1.0f - alpha) * a0r;
 }
 
 void Grist::activate()
@@ -170,6 +291,8 @@ void Grist::activate()
 void Grist::sampleRateChanged(double newSampleRate)
 {
     fSampleRate = newSampleRate > 1.0 ? newSampleRate : 48000.0;
+    reverbInit();
+    reverbUpdate();
 }
 
 void Grist::initState(uint32_t index, State& state)
@@ -632,6 +755,32 @@ void Grist::initParameter(uint32_t index, Parameter& parameter)
         parameter.ranges.min = 0.0f;
         parameter.ranges.max = 1.0f;
         break;
+
+    case kParamRevMix:
+        parameter.name = "Reverb Mix";
+        parameter.symbol = "rev_mix";
+        parameter.unit = "%";
+        parameter.ranges.def = 0.0f;
+        parameter.ranges.min = 0.0f;
+        parameter.ranges.max = 100.0f;
+        break;
+
+    case kParamRevLength:
+        parameter.name = "Reverb Length";
+        parameter.symbol = "rev_length";
+        parameter.ranges.def = 50.0f;
+        parameter.ranges.min = 0.0f;
+        parameter.ranges.max = 100.0f;
+        break;
+
+    case kParamRevHPF:
+        parameter.name = "Reverb HPF";
+        parameter.symbol = "rev_hpf";
+        parameter.unit = "Hz";
+        parameter.ranges.def = 120.0f;
+        parameter.ranges.min = 20.0f;
+        parameter.ranges.max = 2000.0f;
+        break;
     }
 }
 
@@ -676,6 +825,9 @@ float Grist::getParameterValue(uint32_t index) const
     case kParamFilterRes: return fFilterRes;
     case kParamPitchLock: return fPitchLock;
     case kParamFilterType: return fFilterType;
+    case kParamRevMix: return fRevMix * 100.0f;
+    case kParamRevLength: return fRevLength * 100.0f;
+    case kParamRevHPF: return fRevHPF;
 
     default: return 0.0f;
     }
@@ -686,7 +838,7 @@ void Grist::setParameterValue(uint32_t index, float value)
     switch (index)
     {
     case kParamGain:
-        fGain = fclampf(value, 0.0f, 2.0f);
+        fGain = fclampf(value, 0.0f, 6.0f);
         break;
     case kParamGrainSizeMs:
         fGrainSizeMs = fclampf(value, 5.0f, 500.0f);
@@ -753,6 +905,20 @@ void Grist::setParameterValue(uint32_t index, float value)
         }
         break;
     }
+
+    case kParamRevMix:
+        fRevMix = fclampf(value / 100.0f, 0.0f, 1.0f);
+        break;
+
+    case kParamRevLength:
+        fRevLength = fclampf(value / 100.0f, 0.0f, 1.0f);
+        reverbUpdate();
+        break;
+
+    case kParamRevHPF:
+        fRevHPF = fclampf(value, 20.0f, 2000.0f);
+        reverbUpdate();
+        break;
 
     case kParamX:
         fX = fclampf(value, -1.0f, 1.0f);
@@ -1554,9 +1720,52 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
         outL[i] += mixL;
         outR[i] += mixR;
 
-        // Gentle output soft-clip (keeps boost usable without harsh clipping)
-        outL[i] = std::tanh(outL[i]);
-        outR[i] = std::tanh(outR[i]);
+        // soft clip moved to post-FX stage
+    }
+
+    // --- Reverb (post-synth, pre-filter) ---
+    if (fRevMix > 0.0001f)
+    {
+        float* oL = outputs[0];
+        float* oR = outputs[1];
+
+        for (uint32_t i = 0; i < frames; ++i)
+        {
+            const float inL = oL[i];
+            const float inR = oR[i];
+
+            // Run independent reverbs per channel (simple, good enough here).
+            float wetL = 0.0f;
+            float wetR = 0.0f;
+            for (int c = 0; c < 4; ++c)
+            {
+                wetL += reverbProcessComb(revCombL[c], inL);
+                wetR += reverbProcessComb(revCombR[c], inR);
+            }
+            wetL *= 0.25f;
+            wetR *= 0.25f;
+
+            for (int a = 0; a < 2; ++a)
+            {
+                wetL = reverbProcessAllpass(revApL[a], wetL);
+                wetR = reverbProcessAllpass(revApR[a], wetR);
+            }
+
+            // HPF the wet signal to keep it from muddying up.
+            const float hpL = fRevHpB0 * wetL + fRevHpB1 * fRevHpX1L + fRevHpB2 * fRevHpX2L
+                            - fRevHpA1 * fRevHpY1L - fRevHpA2 * fRevHpY2L;
+            fRevHpX2L = fRevHpX1L; fRevHpX1L = wetL;
+            fRevHpY2L = fRevHpY1L; fRevHpY1L = hpL;
+
+            const float hpR = fRevHpB0 * wetR + fRevHpB1 * fRevHpX1R + fRevHpB2 * fRevHpX2R
+                            - fRevHpA1 * fRevHpY1R - fRevHpA2 * fRevHpY2R;
+            fRevHpX2R = fRevHpX1R; fRevHpX1R = wetR;
+            fRevHpY2R = fRevHpY1R; fRevHpY1R = hpR;
+
+            const float mix = fRevMix;
+            oL[i] = inL * (1.0f - mix) + hpL * mix;
+            oR[i] = inR * (1.0f - mix) + hpR * mix;
+        }
     }
 
     // --- Resonant biquad HPF (stereo, applied per block) ---
@@ -1643,6 +1852,17 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
             fBqX2R = fBqX1R; fBqX1R = inR;
             fBqY2R = fBqY1R; fBqY1R = yR;
             outR[i] = yR;
+        }
+    }
+
+    // Final output soft-clip (post-FX)
+    {
+        float* oL = outputs[0];
+        float* oR = outputs[1];
+        for (uint32_t i = 0; i < frames; ++i)
+        {
+            oL[i] = std::tanh(oL[i]);
+            oR[i] = std::tanh(oR[i]);
         }
     }
 

@@ -77,17 +77,19 @@ private:
     static constexpr uint32_t kNumSmallKnobs = 6; // AMP/ENV
     static constexpr uint32_t kNumLfoKnobs = 6;   // LFO1 rate/shape/amp, LFO2 rate/shape/amp
     static constexpr uint32_t kNumFilterKnobs = 3; // TYPE + Cutoff + Resonance
+    static constexpr uint32_t kNumRevKnobs = 3;    // MIX + LENGTH + HPF
     static constexpr uint32_t kNumXYMacros = 8;
 
     Knob macro[kNumMacroKnobs];
     Knob hero[kNumHeroKnobs];
     Knob small[kNumSmallKnobs];
     Knob lfo[kNumLfoKnobs];
-    Knob filterKnobs[kNumFilterKnobs]; // HPF Cutoff + Resonance
+    Knob filterKnobs[kNumFilterKnobs];
+    Knob revKnobs[kNumRevKnobs];
     Knob xyMacros[kNumXYMacros]; // macro knobs shown on XY tab
     float xyMacroY = 0.0f;       // y-centre of XY macro strip
 
-    int activeKnobGroup = -1; // 0=macro,1=hero,2=small,3=lfo,4=xyMacros,5=filterKnobs
+    int activeKnobGroup = -1; // 0=macro,1=hero,2=small,3=lfo,4=xyMacros,5=filterKnobs,6=revKnobs
     int activeKnobIndex = -1;
     float knobDragStartY = 0.0f;
     float knobDragStartValue = 0.0f;

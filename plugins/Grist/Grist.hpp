@@ -77,9 +77,42 @@ private:
     float fPitchLock;      // 0/1
     float fFilterType;     // 0=HPF, 1=LPF
 
-    // Stereo biquad HPF state
+    // Reverb
+    float fRevMix;     // 0..1
+    float fRevLength;  // 0..1 (maps to delay scaling)
+    float fRevHPF;     // Hz
+
+    // Stereo biquad filter state (used for filter + reverb HPF)
     float fBqX1L, fBqX2L, fBqY1L, fBqY2L;
     float fBqX1R, fBqX2R, fBqY1R, fBqY2R;
+
+    float fRevHpX1L, fRevHpX2L, fRevHpY1L, fRevHpY2L;
+    float fRevHpX1R, fRevHpX2R, fRevHpY1R, fRevHpY2R;
+    float fRevHpB0 = 1.0f, fRevHpB1 = 0.0f, fRevHpB2 = 0.0f, fRevHpA1 = 0.0f, fRevHpA2 = 0.0f;
+
+    // Simple Schroeder-ish reverb state
+    struct Comb {
+        std::vector<float> buf;
+        uint32_t idx = 0;
+        float fb = 0.7f;
+        float damp = 0.2f;
+        float lp = 0.0f;
+    };
+    struct Allpass {
+        std::vector<float> buf;
+        uint32_t idx = 0;
+        float fb = 0.5f;
+    };
+
+    Comb revCombL[4];
+    Comb revCombR[4];
+    Allpass revApL[2];
+    Allpass revApR[2];
+
+    void reverbInit();
+    void reverbUpdate();
+    float reverbProcessComb(Comb& c, float x);
+    float reverbProcessAllpass(Allpass& a, float x);
 
     float fX;
     float fY;
