@@ -256,6 +256,12 @@ void GristUI::initKnobs()
     filterKnobs[1] = { filtStartX + step,   row1cy, smallR, kParamFilterCutoff, 20.0f, 20000.0f, 40.0f, "CUT",  "Hz", false, 40.0f };
     filterKnobs[2] = { filtStartX + step*2, row1cy, smallR, kParamFilterRes,    0.0f,  1.0f,     0.0f,  "RES",  "",   false, 0.0f  };
 
+    // Reverb knobs: MIX, LEN, HPF — after FILTER
+    const float revStartX = filtStartX + step * 3 + 70.0f * knobScale;
+    revKnobs[0] = { revStartX,          row1cy, smallR, kParamRevMix,    0.0f, 100.0f, 0.0f,  "REV MIX", "%",  false, 0.0f };
+    revKnobs[1] = { revStartX + step,   row1cy, smallR, kParamRevLength, 0.0f, 100.0f, 50.0f, "REV LEN", "",   false, 50.0f };
+    revKnobs[2] = { revStartX + step*2, row1cy, smallR, kParamRevHPF,    20.0f, 2000.0f, 120.0f, "REV HPF", "Hz", false, 120.0f };
+
     // Row 2 (bottom): AMP/ENV + MOD
     const float row2cy = stripY + stripH * 0.73f;
 
@@ -300,6 +306,7 @@ void GristUI::initKnobs()
     for (uint32_t i = 0; i < kNumSmallKnobs; ++i)  small[i].value       = small[i].defV;
     for (uint32_t i = 0; i < kNumLfoKnobs; ++i)    lfo[i].value         = lfo[i].defV;
     for (uint32_t i = 0; i < kNumFilterKnobs; ++i) filterKnobs[i].value = filterKnobs[i].defV;
+    for (uint32_t i = 0; i < kNumRevKnobs; ++i)    revKnobs[i].value    = revKnobs[i].defV;
 }
 
 void GristUI::setParamFromValue(uint32_t param, float v)
@@ -330,6 +337,7 @@ bool GristUI::hitTestKnob(float x, float y, int& outGroup, int& outIndex) const
     if (hit(lfo,   kNumLfoKnobs,   3)) return true;
     if (hit(xyMacros, kNumXYMacros, 4)) return true;
     if (hit(filterKnobs, kNumFilterKnobs, 5)) return true;
+    if (hit(revKnobs, kNumRevKnobs, 6)) return true;
     return false;
 }
 
@@ -489,6 +497,7 @@ void GristUI::parameterChanged(uint32_t index, float value)
     upd(lfo,   kNumLfoKnobs);
     upd(xyMacros, kNumXYMacros);
     upd(filterKnobs, kNumFilterKnobs);
+    upd(revKnobs, kNumRevKnobs);
 
     repaint();
 }
@@ -677,6 +686,22 @@ void GristUI::uiFileBrowserSelected(const char* filename)
 
 bool GristUI::onMouse(const MouseEvent& ev)
 {
+    // right-click clears modulation slot
+    if (ev.button == 3 && ev.press && tab == Tab::Perform)
+    {
+        const float mx = ev.pos.getX() / sc;
+        const float my = ev.pos.getY() / sc;
+        int mt = -1, ms = -1;
+        if (hitTestModBox(mx, my, mt, ms))
+        {
+            mod[(uint32_t)mt][(uint32_t)ms].src = ModSource::None;
+            mod[(uint32_t)mt][(uint32_t)ms].amt = 0.0f;
+            pushModMatrixState();
+            repaint();
+            return true;
+        }
+    }
+
     // double-click (left) resets sample range selection
     if (ev.button == 1 && ev.press)
     {
@@ -925,7 +950,8 @@ bool GristUI::onMouse(const MouseEvent& ev)
                  : (g == 2) ? &small[k]
                  : (g == 3) ? &lfo[k]
                  : (g == 4) ? &xyMacros[k]
-                 : &filterKnobs[k];
+                 : (g == 5) ? &filterKnobs[k]
+                 : &revKnobs[k];
             knobDragStartValue = kk->value;
             repaint();
             return true;
@@ -1078,7 +1104,8 @@ bool GristUI::onMotion(const MotionEvent& ev)
                  : (activeKnobGroup == 2) ? &small[activeKnobIndex]
                  : (activeKnobGroup == 3) ? &lfo[activeKnobIndex]
                  : (activeKnobGroup == 4) ? &xyMacros[activeKnobIndex]
-                 : &filterKnobs[activeKnobIndex];
+                 : (activeKnobGroup == 5) ? &filterKnobs[activeKnobIndex]
+                 : &revKnobs[activeKnobIndex];
 
         const float dy = (knobDragStartY - my);
         // scaled by range; 160 px for full sweep
@@ -1729,6 +1756,7 @@ void GristUI::onNanoDisplay()
         const float row1LabelY = hero[0].y - hero[0].r - (16.0f + hero[0].r * 0.8f);
         text(hero[0].x - hero[0].r, row1LabelY, "GRAINS", nullptr);
         text(filterKnobs[0].x - filterKnobs[0].r, row1LabelY, "FILTER", nullptr);
+        text(revKnobs[0].x - revKnobs[0].r, row1LabelY, "REVERB", nullptr);
     }
 
     // Row 2 labels
@@ -1765,6 +1793,10 @@ void GristUI::onNanoDisplay()
         const float by0 = ck.y + ck.r + 42.0f;
         drawModSlotsForParam(ck.param, bx0, by0);
     }
+
+    // Row 1: REVERB knobs
+    for (uint32_t i = 0; i < kNumRevKnobs; ++i)
+        drawKnob(revKnobs[i], activeKnobGroup == 6 && activeKnobIndex == (int)i);
 
     // Row 2: AMP/ENV small knobs
     for (uint32_t i = 0; i < kNumSmallKnobs; ++i)
