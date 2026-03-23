@@ -184,10 +184,11 @@ void GristUI::layoutXY()
         { kParamMacro5, "M5" }, { kParamMacro6, "M6" },
         { kParamMacro7, "M7" }, { kParamMacro8, "M8" },
     };
+    const float knobScale = 0.80f;
     for (uint32_t i = 0; i < kNumXYMacros; ++i)
     {
         const float cx = xyX + step * (float)i + step * 0.5f;
-        xyMacros[i] = { cx, xyMacroY, 22.0f,
+        xyMacros[i] = { cx, xyMacroY, 22.0f * knobScale,
                         mdefs[i].p, -1.0f, 1.0f, 0.0f,
                         mdefs[i].label, "", true, 0.0f };
     }
@@ -199,7 +200,9 @@ void GristUI::initKnobs()
     const float colX = waveX + waveW + 18.0f;
     const float colW = float(DISTRHO_UI_DEFAULT_WIDTH) - 18.0f - colX;
 
-    const float macroR = 32.0f;
+    const float knobScale = 0.80f;
+
+    const float macroR = 32.0f * knobScale;
     const float macroGapX = 18.0f;
     const float macrosPad = 14.0f;
     const float macrosInnerW = colW - macrosPad * 2.0f;
@@ -222,9 +225,9 @@ void GristUI::initKnobs()
     const float stripY = waveY + waveH + 18.0f;
     const float stripH = float(DISTRHO_UI_DEFAULT_HEIGHT) - stripY - 18.0f;
 
-    const float smallR = 22.0f;
+    const float smallR = 22.0f * knobScale;
     const float startX = waveX + 18.0f + smallR;
-    const float step   = smallR * 2.0f + 16.0f; // 60px per knob
+    const float step   = smallR * 2.0f + 16.0f * knobScale; // keep spacing proportional
 
     // Row 1 (top): GRAINS + FILTER
     const float row1cy = stripY + stripH * 0.27f;
@@ -256,7 +259,7 @@ void GristUI::initKnobs()
 
     // Small knobs: AMP/ENV
     const struct { uint32_t p; float minV; float maxV; float defV; const char* label; const char* unit; bool bipolar; } sdefs[kNumSmallKnobs] = {
-        { kParamGain,            0.0f,   2.0f,    1.0f,   "GAIN", "",   false },
+        { kParamGain,            0.0f,   6.0f,    1.5f,   "GAIN", "",   false },
         { kParamAttackMs,        0.0f,   2000.0f, 5.0f,   "ATK",  "ms", false },
         { kParamReleaseMs,       5.0f,   5000.0f, 120.0f, "REL",  "ms", false },
         { kParamPitchEnvAmt,    -48.0f,  48.0f,   0.0f,   "PENV", "st", true  },
@@ -1159,22 +1162,35 @@ void GristUI::formatKnobValue(const Knob& k, char* buf, size_t bufSize) const
 
 void GristUI::drawKnob(const Knob& k, bool active)
 {
+    // Scale all ornament sizes from radius so shrinking knobs keeps proportions.
+    const float r = std::max(8.0f, k.r);
+
+    const float bezelOuter = r * 0.55f;
+    const float bezelMid   = r * 0.41f;
+    const float bezelInner = r * 0.32f;
+
+    const float arcW = std::max(4.0f, r * 0.32f);
+    const float arcR = r + r * 0.09f;
+
+    const float dotR = std::max(2.6f, r * 0.19f);
+    const float dotOfs = std::max(2.5f, r * 0.18f);
+
     // knob body (bezel + face)
     beginPath();
-    circle(k.x, k.y, k.r + 12.0f);
+    circle(k.x, k.y, r + bezelOuter);
     fillColor(T.bezel[0], T.bezel[1], T.bezel[2]);
     fill();
 
     beginPath();
-    circle(k.x, k.y, k.r + 9.0f);
+    circle(k.x, k.y, r + bezelMid);
     fillColor(T.panel[0], T.panel[1], T.panel[2]);
     fill();
 
     // face gradient
     beginPath();
-    circle(k.x, k.y, k.r + 7.0f);
+    circle(k.x, k.y, r + bezelInner);
     {
-        const Paint pg = radialGradient(k.x - k.r*0.25f, k.y - k.r*0.35f, k.r*0.6f, k.r*1.8f,
+        const Paint pg = radialGradient(k.x - r*0.25f, k.y - r*0.35f, r*0.6f, r*1.8f,
                                        Color(1.0f, 1.0f, 1.0f, 0.09f),
                                        Color(0.0f, 0.0f, 0.0f, 0.10f));
         fillPaint(pg);
@@ -1182,7 +1198,7 @@ void GristUI::drawKnob(const Knob& k, bool active)
     fill();
 
     strokeColor(active ? T.strokeHi[0] : T.stroke[0], active ? T.strokeHi[1] : T.stroke[1], active ? T.strokeHi[2] : T.stroke[2]);
-    strokeWidth(active ? 2.0f : 1.0f);
+    strokeWidth(active ? std::max(1.5f, r * 0.10f) : 1.0f);
     stroke();
 
     // value arc
@@ -1192,39 +1208,41 @@ void GristUI::drawKnob(const Knob& k, bool active)
     const float aa = a0 + (a1 - a0) * fclampf(t, 0.0f, 1.0f);
 
     beginPath();
-    arc(k.x, k.y, k.r + 2.0f, a0, a1, CCW);
+    arc(k.x, k.y, arcR, a0, a1, CCW);
     strokeColor(0.18f, 0.18f, 0.19f);
-    strokeWidth(7.0f);
+    strokeWidth(arcW);
     stroke();
 
     beginPath();
-    arc(k.x, k.y, k.r + 2.0f, a0, aa, CCW);
+    arc(k.x, k.y, arcR, a0, aa, CCW);
     strokeColor(T.accent[0], T.accent[1], T.accent[2]);
-    strokeWidth(7.0f);
+    strokeWidth(arcW);
     stroke();
 
     // indicator
-    const float ix = k.x + std::cos(aa) * (k.r - 4.0f);
-    const float iy = k.y + std::sin(aa) * (k.r - 4.0f);
+    const float ix = k.x + std::cos(aa) * (r - dotOfs);
+    const float iy = k.y + std::sin(aa) * (r - dotOfs);
     beginPath();
-    circle(ix, iy, 4.2f);
+    circle(ix, iy, dotR);
     fillColor(T.accentHi[0], T.accentHi[1], T.accentHi[2]);
     fill();
 
     // label + value
-    // label
-    const float labelY = k.y + k.r + (k.r >= 20.0f ? 18.0f : 20.0f);
-    fontSize(k.r >= 20.0f ? 12.5f : 11.5f);
+    const float labelY = k.y + r * 1.82f;
+    const float labelFont = fclampf(r * 0.57f, 9.0f, 12.5f);
+    const float valueFont = std::max(8.5f, labelFont - 1.4f);
+
     fillColor(T.text[0], T.text[1], T.text[2]);
     textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
+    fontSize(labelFont);
     text(k.x, labelY, k.label, nullptr);
 
     char buf[32];
     formatKnobValue(k, buf, sizeof(buf));
 
-    fontSize(k.r >= 20.0f ? 11.0f : 10.5f);
     fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
-    text(k.x, labelY + 14.0f, buf, nullptr);
+    fontSize(valueFont);
+    text(k.x, labelY + r * 0.64f, buf, nullptr);
 }
 
 void GristUI::onNanoDisplay()
