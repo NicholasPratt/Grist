@@ -1155,6 +1155,13 @@ void GristUI::formatKnobValue(const Knob& k, char* buf, size_t bufSize) const
         return;
     }
 
+    // Integer-ish formatting for Hz (filter cutoff etc.)
+    if (k.unit && std::strcmp(k.unit, "Hz") == 0)
+    {
+        std::snprintf(buf, bufSize, "%.0f Hz", std::round(k.value));
+        return;
+    }
+
     if (k.unit && k.unit[0] != '\0')
         std::snprintf(buf, bufSize, "%.3g %s", k.value, k.unit);
     else
