@@ -60,6 +60,7 @@ Grist::Grist()
       fReleaseMs(120.0f),
       fKillOnRetrig(1.0f),
       fNewVoiceOnRetrig(0.0f),
+      fLatch(0.0f),
       fLfo1RateHz(0.25f),
       fLfo1Shape(0.0f),
       fLfo2RateHz(0.10f),
@@ -99,7 +100,10 @@ Grist::Grist()
     }
 
     for (uint32_t n = 0; n < 128; ++n)
+    {
         noteQueues[n].clear();
+        latchedNotes[n] = false;
+    }
 
     modMatrix.clear();
     // Demo defaults (so it immediately feels "alive")
@@ -560,6 +564,15 @@ void Grist::initParameter(uint32_t index, Parameter& parameter)
         parameter.ranges.min = 0.0f;
         parameter.ranges.max = 100.0f;
         break;
+
+    case kParamLatch:
+        parameter.name = "Latch";
+        parameter.symbol = "latch";
+        parameter.hints |= kParameterIsBoolean;
+        parameter.ranges.def = 0.0f;
+        parameter.ranges.min = 0.0f;
+        parameter.ranges.max = 1.0f;
+        break;
     }
 }
 
@@ -597,6 +610,7 @@ float Grist::getParameterValue(uint32_t index) const
     case kParamMacro8: return fMacro[7];
     case kParamSampleStart: return fSampleStart01 * 100.0f;
     case kParamSampleEnd: return fSampleEnd01 * 100.0f;
+    case kParamLatch: return fLatch;
 
     default: return 0.0f;
     }
@@ -686,6 +700,28 @@ void Grist::setParameterValue(uint32_t index, float value)
     {
         const float v = fclampf(value / 100.0f, 0.0f, 1.0f);
         fSampleEnd01 = std::max(v, fSampleStart01);
+        break;
+    }
+
+    case kParamLatch:
+    {
+        const bool wasOn = fLatch >= 0.5f;
+        fLatch = (value >= 0.5f) ? 1.0f : 0.0f;
+        // When latch is turned off, release all latched notes.
+        if (wasOn && fLatch < 0.5f)
+        {
+            for (int n = 0; n < 128; ++n)
+            {
+                if (!latchedNotes[n]) continue;
+                latchedNotes[n] = false;
+                int v = -1;
+                if (noteQueues[(uint32_t)n].pop(v) && v >= 0 && v < (int)kMaxVoices)
+                {
+                    voices[(uint32_t)v].gate = false;
+                    voices[(uint32_t)v].releasing = true;
+                }
+            }
+        }
         break;
     }
     }
@@ -1072,36 +1108,83 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
 
         if (isNoteOn)
         {
-            int v = -1;
-            if (fNewVoiceOnRetrig < 0.5f)
-                v = findVoiceForNote(note);
-            if (v < 0) v = allocVoice();
-
-            // If we're stealing/reusing a voice, ensure it isn't still referenced by any note queue.
-            removeVoiceFromQueues(v);
-
-            Voice& voice = voices[(uint32_t)v];
-            voice.active = true;
-            voice.gate = true;
-            voice.releasing = false;
-            voice.note = note;
-            voice.velocity = (float)vel / 127.0f;
-            voice.env = 0.0f; // attack ramp
-            voice.pitchEnv = fPitchEnvAmt;
-            voice.samplesToNextGrain = 0.0;
-
-            // optionally kill old grains in this voice on retrigger
-            if (fKillOnRetrig >= 0.5f)
+            if (fLatch >= 0.5f)
             {
-                for (uint32_t g = 0; g < Voice::kMaxGrains; ++g)
-                    voice.grains[g].active = false;
-            }
+                // Latch mode: re-triggering a latched note releases it; otherwise start it.
+                if (latchedNotes[(uint32_t)note])
+                {
+                    latchedNotes[(uint32_t)note] = false;
+                    int v = -1;
+                    if (noteQueues[(uint32_t)note].pop(v) && v >= 0 && v < (int)kMaxVoices)
+                    {
+                        voices[(uint32_t)v].gate = false;
+                        voices[(uint32_t)v].releasing = true;
+                    }
+                }
+                else
+                {
+                    latchedNotes[(uint32_t)note] = true;
+                    int v = -1;
+                    if (fNewVoiceOnRetrig < 0.5f)
+                        v = findVoiceForNote(note);
+                    if (v < 0) v = allocVoice();
+                    removeVoiceFromQueues(v);
 
-            // Track this note-on so a later note-off can release the matching event.
-            noteQueues[(uint32_t)note].push(v);
+                    Voice& voice = voices[(uint32_t)v];
+                    voice.active = true;
+                    voice.gate = true;
+                    voice.releasing = false;
+                    voice.note = note;
+                    voice.velocity = (float)vel / 127.0f;
+                    voice.env = 0.0f;
+                    voice.pitchEnv = fPitchEnvAmt;
+                    voice.samplesToNextGrain = 0.0;
+
+                    if (fKillOnRetrig >= 0.5f)
+                    {
+                        for (uint32_t g = 0; g < Voice::kMaxGrains; ++g)
+                            voice.grains[g].active = false;
+                    }
+
+                    noteQueues[(uint32_t)note].push(v);
+                }
+            }
+            else
+            {
+                int v = -1;
+                if (fNewVoiceOnRetrig < 0.5f)
+                    v = findVoiceForNote(note);
+                if (v < 0) v = allocVoice();
+
+                // If we're stealing/reusing a voice, ensure it isn't still referenced by any note queue.
+                removeVoiceFromQueues(v);
+
+                Voice& voice = voices[(uint32_t)v];
+                voice.active = true;
+                voice.gate = true;
+                voice.releasing = false;
+                voice.note = note;
+                voice.velocity = (float)vel / 127.0f;
+                voice.env = 0.0f; // attack ramp
+                voice.pitchEnv = fPitchEnvAmt;
+                voice.samplesToNextGrain = 0.0;
+
+                // optionally kill old grains in this voice on retrigger
+                if (fKillOnRetrig >= 0.5f)
+                {
+                    for (uint32_t g = 0; g < Voice::kMaxGrains; ++g)
+                        voice.grains[g].active = false;
+                }
+
+                // Track this note-on so a later note-off can release the matching event.
+                noteQueues[(uint32_t)note].push(v);
+            }
         }
         else if (isNoteOff)
         {
+            // In latch mode, swallow note-offs — notes are released by re-triggering.
+            if (fLatch >= 0.5f) continue;
+
             int v = -1;
             if (noteQueues[(uint32_t)note].pop(v))
             {

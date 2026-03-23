@@ -61,6 +61,9 @@ private:
     float fReleaseMs;
     float fKillOnRetrig;        // 0/1 (DPF doesn't have bool params everywhere)
     float fNewVoiceOnRetrig;    // 0/1
+    float fLatch;               // 0/1 — hold notes until re-triggered
+
+    bool latchedNotes[128];     // true = this note is currently held by latch
 
     // Modulation source parameters
     float fLfo1RateHz;

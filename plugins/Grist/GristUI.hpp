@@ -59,10 +59,13 @@ private:
     };
 
     // Buttons
-    float btnX, btnY, btnW, btnH;      // reload
-    float btn2X, btn2Y, btn2W, btn2H;  // load
+    float btnX, btnY, btnW, btnH;          // reload
+    float btn2X, btn2Y, btn2W, btn2H;      // load
     float btnPlayX, btnPlayY, btnPlayW, btnPlayH; // preview play/stop
+    float btnLatchX, btnLatchY, btnLatchW, btnLatchH; // latch toggle
     float tabX, tabY, tabW, tabH;
+
+    bool latchOn = false; // cached UI state
 
     char sampleLabel[200];
 

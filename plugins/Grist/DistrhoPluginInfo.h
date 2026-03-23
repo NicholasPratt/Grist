@@ -73,6 +73,8 @@ enum Parameters {
     kParamSampleStart,
     kParamSampleEnd,
 
+    kParamLatch,
+
     kParamCount
 };
 

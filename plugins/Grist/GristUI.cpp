@@ -141,6 +141,12 @@ void GristUI::layoutPerform()
     btnPlayX = btn2X + btn2W + 10.0f;
     btnPlayY = tabY;
 
+    // Latch toggle button
+    btnLatchW = 80.0f;
+    btnLatchH = tabH;
+    btnLatchX = btnPlayX + btnPlayW + 10.0f;
+    btnLatchY = tabY;
+
     // Reload on right
     btnW = 190.0f;
     btnX = float(DISTRHO_UI_DEFAULT_WIDTH) - 18.0f - btnW;
@@ -379,6 +385,7 @@ void GristUI::parameterChanged(uint32_t index, float value)
 
     if (index == kParamSampleStart) sampleStart01 = fclampf(value / 100.0f, 0.0f, 1.0f);
     if (index == kParamSampleEnd)   sampleEnd01   = fclampf(value / 100.0f, 0.0f, 1.0f);
+    if (index == kParamLatch)       latchOn = (value >= 0.5f);
 
     auto upd = [&](Knob* ks, uint32_t n) {
         for (uint32_t i = 0; i < n; ++i)
@@ -669,6 +676,15 @@ bool GristUI::onMouse(const MouseEvent& ev)
         {
             setState("sample", "__DEFAULT__");
             std::snprintf(sampleLabel, sizeof(sampleLabel), "Reloading default: grist.wav");
+            repaint();
+            return true;
+        }
+
+        // Latch toggle
+        if (mx >= btnLatchX && mx <= btnLatchX + btnLatchW && my >= btnLatchY && my <= btnLatchY + btnLatchH)
+        {
+            latchOn = !latchOn;
+            setParamFromValue(kParamLatch, latchOn ? 1.0f : 0.0f);
             repaint();
             return true;
         }
@@ -1114,6 +1130,36 @@ void GristUI::onNanoDisplay()
     drawButton(btn2X, btn2Y, btn2W, btn2H, "Load sample…");
     drawButton(btnPlayX, btnPlayY, btnPlayW, btnPlayH, previewOn ? "Stop" : "Play");
     drawButton(btnX, btnY, btnW, btnH, "Reload default");
+
+    // Latch toggle — lit up in accent colour when active
+    {
+        const float x = btnLatchX, y = btnLatchY, w = btnLatchW, h = btnLatchH;
+        beginPath();
+        roundedRect(x, y, w, h, 10.0f);
+        if (latchOn)
+            fillColor(T.accent[0] * 0.55f, T.accent[1] * 0.55f, T.accent[2] * 0.20f);
+        else
+            fillColor(T.panel2[0], T.panel2[1], T.panel2[2]);
+        fill();
+
+        beginPath();
+        roundedRect(x + 1.0f, y + 1.0f, w - 2.0f, h * 0.55f, 9.0f);
+        fillColor(1.0f, 1.0f, 1.0f, 0.05f);
+        fill();
+
+        strokeColor(latchOn ? Color(T.accent[0], T.accent[1], T.accent[2], 0.9f)
+                             : Color(T.strokeHi[0], T.strokeHi[1], T.strokeHi[2], 1.0f));
+        strokeWidth(1.0f);
+        stroke();
+
+        fontSize(12.0f);
+        if (latchOn)
+            fillColor(T.accent[0], T.accent[1], T.accent[2]);
+        else
+            fillColor(T.text[0], T.text[1], T.text[2]);
+        textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
+        text(x + w * 0.5f, y + h * 0.5f - 3.0f, "LATCH", nullptr);
+    }
 
     // sample label
     fontSize(11.0f);
