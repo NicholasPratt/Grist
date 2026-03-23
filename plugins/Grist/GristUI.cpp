@@ -236,7 +236,7 @@ void GristUI::initKnobs()
 
     // Hero knobs: GRAINS (SIZE, DENS, POS, SPRAY, PITCH)
     const struct { uint32_t p; float minV; float maxV; float defV; const char* label; const char* unit; bool bipolar; } hdefs[5] = {
-        { kParamGrainSizeMs, 5.0f, 250.0f, 60.0f, "SIZE",  "ms",   false },
+        { kParamGrainSizeMs, 5.0f, 500.0f, 60.0f, "SIZE",  "ms",   false },
         { kParamDensity,     1.0f, 80.0f,  20.0f, "DENS",  "gr/s", false },
         { kParamPosition,    0.0f, 100.0f, 50.0f, "POS",   "%",    false },
         { kParamSpray,       0.0f, 100.0f, 0.0f,  "SPRAY", "%",    false },

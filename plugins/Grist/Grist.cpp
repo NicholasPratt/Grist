@@ -387,7 +387,7 @@ void Grist::initParameter(uint32_t index, Parameter& parameter)
         parameter.unit = "ms";
         parameter.ranges.def = 60.0f;
         parameter.ranges.min = 5.0f;
-        parameter.ranges.max = 250.0f;
+        parameter.ranges.max = 500.0f;
         break;
 
     case kParamDensity:
@@ -689,7 +689,7 @@ void Grist::setParameterValue(uint32_t index, float value)
         fGain = fclampf(value, 0.0f, 2.0f);
         break;
     case kParamGrainSizeMs:
-        fGrainSizeMs = fclampf(value, 5.0f, 250.0f);
+        fGrainSizeMs = fclampf(value, 5.0f, 500.0f);
         break;
     case kParamDensity:
         fDensity = fclampf(value, 1.0f, 80.0f);
