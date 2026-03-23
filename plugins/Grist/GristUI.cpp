@@ -1155,6 +1155,13 @@ void GristUI::formatKnobValue(const Knob& k, char* buf, size_t bufSize) const
         return;
     }
 
+    // Filter type is discrete (0..1). Display as decimal integer (not 0.00).
+    if (k.param == kParamFilterType)
+    {
+        std::snprintf(buf, bufSize, "%d", (int)std::lround(k.value));
+        return;
+    }
+
     // Integer-ish formatting for Hz (filter cutoff etc.)
     if (k.unit && std::strcmp(k.unit, "Hz") == 0)
     {
