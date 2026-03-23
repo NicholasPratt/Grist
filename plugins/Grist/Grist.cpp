@@ -1363,11 +1363,13 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
                         const float rr = rngFloat01() * 2.0f - 1.0f; // -1..1
                         float pos01 = fclampf(center + rr * spray, 0.0f, 1.0f);
 
-                        // Apply sample range selection.
-                        const float a = fclampf(fSampleStart01, 0.0f, 1.0f);
-                        const float b = fclampf(fSampleEnd01,   0.0f, 1.0f);
-                        const float lo = std::min(a, b);
-                        const float hi = std::max(a, b);
+                        // Apply sample range selection (with modulation).
+                        float sStart = fSampleStart01 + targetMod(GristMod::Target::SampleStart) * 0.5f;
+                        float sEnd   = fSampleEnd01   + targetMod(GristMod::Target::SampleEnd)   * 0.5f;
+                        sStart = fclampf(sStart, 0.0f, 1.0f);
+                        sEnd   = fclampf(sEnd,   0.0f, 1.0f);
+                        const float lo = std::min(sStart, sEnd);
+                        const float hi = std::max(sStart, sEnd);
                         const float span = std::max(1e-6f, hi - lo);
                         pos01 = lo + pos01 * span;
 

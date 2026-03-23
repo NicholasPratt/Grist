@@ -39,6 +39,8 @@ enum class Target : uint8_t {
     Density,        // grains/sec
     Spray,          // 0..1
     Pitch,          // semitones
+    SampleStart,    // 0..1 offset applied to grain playback start boundary
+    SampleEnd,      // 0..1 offset applied to grain playback end boundary
     COUNT
 };
 
@@ -87,6 +89,8 @@ struct Matrix {
         if (streq(id, "dens"))  return Target::Density;
         if (streq(id, "spray")) return Target::Spray;
         if (streq(id, "pitch")) return Target::Pitch;
+        if (streq(id, "sstart")) return Target::SampleStart;
+        if (streq(id, "send"))   return Target::SampleEnd;
         return Target::Position;
     }
 };

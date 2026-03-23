@@ -164,8 +164,27 @@ void GristUI::layoutXY()
 {
     xyX = 18.0f;
     xyY = 60.0f;
+    // Leave 76px at bottom for macro strip
     xyW = float(DISTRHO_UI_DEFAULT_WIDTH) - 36.0f;
-    xyH = float(DISTRHO_UI_DEFAULT_HEIGHT) - xyY - 18.0f;
+    xyH = float(DISTRHO_UI_DEFAULT_HEIGHT) - xyY - 18.0f - 76.0f;
+
+    // XY macro strip: centred vertically in the remaining space below the pad
+    xyMacroY = xyY + xyH + 14.0f + 22.0f; // 14px gap + knob radius
+
+    const float step = xyW / float(kNumXYMacros);
+    const struct { uint32_t p; const char* label; } mdefs[8] = {
+        { kParamMacro1, "M1" }, { kParamMacro2, "M2" },
+        { kParamMacro3, "M3" }, { kParamMacro4, "M4" },
+        { kParamMacro5, "M5" }, { kParamMacro6, "M6" },
+        { kParamMacro7, "M7" }, { kParamMacro8, "M8" },
+    };
+    for (uint32_t i = 0; i < kNumXYMacros; ++i)
+    {
+        const float cx = xyX + step * (float)i + step * 0.5f;
+        xyMacros[i] = { cx, xyMacroY, 22.0f,
+                        mdefs[i].p, -1.0f, 1.0f, 0.0f,
+                        mdefs[i].label, "", true, 0.0f };
+    }
 }
 
 void GristUI::initKnobs()
@@ -295,6 +314,7 @@ bool GristUI::hitTestKnob(float x, float y, int& outGroup, int& outIndex) const
     if (hit(hero,  kNumHeroKnobs,  1)) return true;
     if (hit(small, kNumSmallKnobs, 2)) return true;
     if (hit(lfo,   kNumLfoKnobs,   3)) return true;
+    if (hit(xyMacros, kNumXYMacros, 4)) return true;
     return false;
 }
 
@@ -371,6 +391,40 @@ bool GristUI::hitTestModBox(float x, float y, int& outTarget, int& outSlot) cons
             }
         }
     }
+
+    // Wave mod boxes (sample start / end)
+    if (tab == Tab::Perform)
+    {
+        const float innerX = waveX + 10.0f;
+        const float innerW = waveW - 20.0f;
+        const float bsz = 12.0f;
+        const float gap = 6.0f;
+        const float slotsW = kSlotsPerTarget * bsz + (kSlotsPerTarget - 1) * gap;
+        const float boxY = waveY + waveH + 4.0f;
+
+        const float handles[2] = {
+            innerX + fclampf(sampleStart01, 0.0f, 1.0f) * innerW,
+            innerX + fclampf(sampleEnd01,   0.0f, 1.0f) * innerW,
+        };
+        const ModTarget tgts[2] = { ModTarget::SampleStart, ModTarget::SampleEnd };
+
+        for (int h = 0; h < 2; ++h)
+        {
+            const float bx0 = fclampf(handles[h] - slotsW * 0.5f,
+                                      waveX, waveX + waveW - slotsW);
+            for (uint32_t s = 0; s < kSlotsPerTarget; ++s)
+            {
+                const float bx = bx0 + float(s) * (bsz + gap);
+                if (x >= bx && x <= bx + bsz && y >= boxY && y <= boxY + bsz)
+                {
+                    outTarget = (int)tgts[h];
+                    outSlot   = (int)s;
+                    return true;
+                }
+            }
+        }
+    }
+
     return false;
 }
 
@@ -397,6 +451,7 @@ void GristUI::parameterChanged(uint32_t index, float value)
     upd(hero,  kNumHeroKnobs);
     upd(small, kNumSmallKnobs);
     upd(lfo,   kNumLfoKnobs);
+    upd(xyMacros, kNumXYMacros);
 
     repaint();
 }
@@ -691,6 +746,20 @@ bool GristUI::onMouse(const MouseEvent& ev)
 
         if (tab == Tab::XY)
         {
+            // XY macro knobs
+            {
+                int g = -1, k = -1;
+                if (hitTestKnob(mx, my, g, k) && g == 4)
+                {
+                    activeKnobGroup = g;
+                    activeKnobIndex = k;
+                    knobDragStartY = my;
+                    knobDragStartValue = xyMacros[k].value;
+                    repaint();
+                    return true;
+                }
+            }
+
             // XY pad
             if (mx >= xyX && mx <= xyX + xyW && my >= xyY && my <= xyY + xyH)
             {
@@ -861,6 +930,23 @@ bool GristUI::onMotion(const MotionEvent& ev)
 
     if (tab == Tab::XY)
     {
+        // xyMacro knob drag
+        if (activeKnobGroup == 4 && activeKnobIndex >= 0)
+        {
+            Knob& kk = xyMacros[activeKnobIndex];
+            const float dy = (knobDragStartY - my);
+            const float t = dy / 160.0f;
+            float v = knobDragStartValue + t * (kk.maxV - kk.minV);
+            v = fclampf(v, kk.minV, kk.maxV);
+            kk.value = v;
+            // keep the macro[] entry in sync so PERFORM shows the same value
+            if (activeKnobIndex < (int)kNumMacroKnobs)
+                macro[activeKnobIndex].value = v;
+            setParamFromValue(kk.param, v);
+            repaint();
+            return true;
+        }
+
         if (!xyActive) return false;
         const float nx = fclampf((mx - xyX) / xyW, 0.0f, 1.0f);
         const float ny = fclampf((my - xyY) / xyH, 0.0f, 1.0f);
@@ -937,7 +1023,8 @@ bool GristUI::onMotion(const MotionEvent& ev)
         Knob* kk = (activeKnobGroup == 0) ? &macro[activeKnobIndex]
                  : (activeKnobGroup == 1) ? &hero[activeKnobIndex]
                  : (activeKnobGroup == 2) ? &small[activeKnobIndex]
-                 : &lfo[activeKnobIndex];
+                 : (activeKnobGroup == 3) ? &lfo[activeKnobIndex]
+                 : &xyMacros[activeKnobIndex];
 
         const float dy = (knobDragStartY - my);
         // scaled by range; 160 px for full sweep
@@ -995,8 +1082,21 @@ void GristUI::formatKnobValue(const Knob& k, char* buf, size_t bufSize) const
         return;
     }
 
+    // Human-readable millisecond formatting
+    if (k.unit && std::strcmp(k.unit, "ms") == 0)
+    {
+        const float v = k.value;
+        if (v >= 1000.0f)
+            std::snprintf(buf, bufSize, "%.2gs", v / 1000.0f);
+        else if (v >= 100.0f)
+            std::snprintf(buf, bufSize, "%.0fms", v);
+        else
+            std::snprintf(buf, bufSize, "%.1fms", v);
+        return;
+    }
+
     if (k.unit && k.unit[0] != '\0')
-        std::snprintf(buf, bufSize, "%.2g %s", k.value, k.unit);
+        std::snprintf(buf, bufSize, "%.3g %s", k.value, k.unit);
     else
         std::snprintf(buf, bufSize, "%.2f", k.value);
 }
@@ -1262,6 +1362,30 @@ void GristUI::onNanoDisplay()
         textAlign(ALIGN_RIGHT | ALIGN_MIDDLE);
         text(xyX + xyW - 18.0f, xyY + 16.0f, vbuf, nullptr);
 
+        // XY macro strip
+        {
+            const float stripX = xyX;
+            const float stripY = xyY + xyH + 6.0f;
+            const float stripW = xyW;
+            const float stripH = float(DISTRHO_UI_DEFAULT_HEIGHT) - stripY - 12.0f;
+
+            beginPath();
+            roundedRect(stripX, stripY, stripW, stripH, 10.0f);
+            fillColor(T.panel[0], T.panel[1], T.panel[2]);
+            fill();
+            strokeColor(T.stroke[0], T.stroke[1], T.stroke[2]);
+            strokeWidth(1.0f);
+            stroke();
+
+            fontSize(9.5f);
+            fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
+            textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
+            text(stripX + 10.0f, stripY + 10.0f, "MACROS", nullptr);
+
+            for (uint32_t i = 0; i < kNumXYMacros; ++i)
+                drawKnob(xyMacros[i], activeKnobGroup == 4 && activeKnobIndex == (int)i);
+        }
+
         return;
     }
 
@@ -1505,6 +1629,63 @@ void GristUI::onNanoDisplay()
         const float bx = hero[i].x - slotsW * 0.5f;
         const float by = hero[i].y + hero[i].r + 44.0f;
         drawModSlotsForParam(hero[i].param, bx, by);
+    }
+
+    // Sample range mod boxes (below waveform panel)
+    if (tab == Tab::Perform)
+    {
+        const float innerX = waveX + 10.0f;
+        const float innerW = waveW - 20.0f;
+        const float bsz = 12.0f;
+        const float gap = 6.0f;
+        const float slotsW = kSlotsPerTarget * bsz + (kSlotsPerTarget - 1) * gap;
+        const float boxY = waveY + waveH + 4.0f;
+
+        auto drawWaveMod = [&](float handleX, ModTarget tgt, const char* label) {
+            const float bx0 = fclampf(handleX - slotsW * 0.5f,
+                                      waveX, waveX + waveW - slotsW);
+
+            // label
+            fontSize(8.5f);
+            fillColor(T.textMuted[0], T.textMuted[1], T.textMuted[2]);
+            textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
+            text(bx0 + slotsW * 0.5f, boxY - 5.0f, label, nullptr);
+
+            for (uint32_t si = 0; si < kSlotsPerTarget; ++si)
+            {
+                const float bx = bx0 + float(si) * (bsz + gap);
+                beginPath();
+                roundedRect(bx, boxY, bsz, bsz, 3.0f);
+                const ModSlot& sl = mod[(uint32_t)tgt][si];
+                if (sl.src == ModSource::None)
+                    fillColor(T.panel[0], T.panel[1], T.panel[2]);
+                else {
+                    const float a = fclampf(std::fabs(sl.amt), 0.0f, 1.0f);
+                    if (sl.amt >= 0.0f)
+                        fillColor(lerp(T.panel2[0], T.accent[0], a*0.85f),
+                                  lerp(T.panel2[1], T.accent[1], a*0.85f),
+                                  lerp(T.panel2[2], T.accent[2], a*0.85f));
+                    else
+                        fillColor(lerp(T.panel2[0], T.neg[0], a*0.85f),
+                                  lerp(T.panel2[1], T.neg[1], a*0.85f),
+                                  lerp(T.panel2[2], T.neg[2], a*0.85f));
+                }
+                fill();
+                strokeColor(T.stroke[0], T.stroke[1], T.stroke[2]);
+                strokeWidth(1.0f);
+                stroke();
+                fontSize(8.5f);
+                fillColor(T.text[0], T.text[1], T.text[2]);
+                textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
+                text(bx + bsz * 0.5f, boxY + bsz * 0.5f + 0.2f,
+                     modSourceLabel(sl.src), nullptr);
+            }
+        };
+
+        const float x0 = innerX + fclampf(sampleStart01, 0.0f, 1.0f) * innerW;
+        const float x1 = innerX + fclampf(sampleEnd01,   0.0f, 1.0f) * innerW;
+        drawWaveMod(x0, ModTarget::SampleStart, "START");
+        drawWaveMod(x1, ModTarget::SampleEnd,   "END");
     }
 
     restore();
@@ -1828,11 +2009,13 @@ GristUI::ModSource GristUI::nextModSource(ModSource s) const
 
 bool GristUI::sliderToModTarget(uint32_t param, ModTarget& tgt) const
 {
-    if (param == kParamPosition)     { tgt = ModTarget::Position;  return true; }
-    if (param == kParamGrainSizeMs)  { tgt = ModTarget::GrainSize; return true; }
-    if (param == kParamDensity)      { tgt = ModTarget::Density;   return true; }
-    if (param == kParamSpray)        { tgt = ModTarget::Spray;     return true; }
-    if (param == kParamPitch)        { tgt = ModTarget::Pitch;     return true; }
+    if (param == kParamPosition)     { tgt = ModTarget::Position;    return true; }
+    if (param == kParamGrainSizeMs)  { tgt = ModTarget::GrainSize;   return true; }
+    if (param == kParamDensity)      { tgt = ModTarget::Density;     return true; }
+    if (param == kParamSpray)        { tgt = ModTarget::Spray;       return true; }
+    if (param == kParamPitch)        { tgt = ModTarget::Pitch;       return true; }
+    if (param == kParamSampleStart)  { tgt = ModTarget::SampleStart; return true; }
+    if (param == kParamSampleEnd)    { tgt = ModTarget::SampleEnd;   return true; }
     return false;
 }
 
@@ -1860,11 +2043,13 @@ void GristUI::pushModMatrixState()
         switch (t)
         {
         default:
-        case ModTarget::Position:  return "pos";
-        case ModTarget::GrainSize: return "size";
-        case ModTarget::Density:   return "dens";
-        case ModTarget::Spray:     return "spray";
-        case ModTarget::Pitch:     return "pitch";
+        case ModTarget::Position:    return "pos";
+        case ModTarget::GrainSize:   return "size";
+        case ModTarget::Density:     return "dens";
+        case ModTarget::Spray:       return "spray";
+        case ModTarget::Pitch:       return "pitch";
+        case ModTarget::SampleStart: return "sstart";
+        case ModTarget::SampleEnd:   return "send";
         }
     };
 
@@ -1898,11 +2083,13 @@ void GristUI::parseModMatrixState(const char* value)
 
     auto parseTarget = [&](const char* id) -> int {
         if (!id) return -1;
-        if (std::strcmp(id, "pos") == 0) return (int)ModTarget::Position;
-        if (std::strcmp(id, "size") == 0) return (int)ModTarget::GrainSize;
-        if (std::strcmp(id, "dens") == 0) return (int)ModTarget::Density;
-        if (std::strcmp(id, "spray") == 0) return (int)ModTarget::Spray;
-        if (std::strcmp(id, "pitch") == 0) return (int)ModTarget::Pitch;
+        if (std::strcmp(id, "pos") == 0)    return (int)ModTarget::Position;
+        if (std::strcmp(id, "size") == 0)   return (int)ModTarget::GrainSize;
+        if (std::strcmp(id, "dens") == 0)   return (int)ModTarget::Density;
+        if (std::strcmp(id, "spray") == 0)  return (int)ModTarget::Spray;
+        if (std::strcmp(id, "pitch") == 0)  return (int)ModTarget::Pitch;
+        if (std::strcmp(id, "sstart") == 0) return (int)ModTarget::SampleStart;
+        if (std::strcmp(id, "send") == 0)   return (int)ModTarget::SampleEnd;
         return -1;
     };
 

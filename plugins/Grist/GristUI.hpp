@@ -74,11 +74,14 @@ private:
     static constexpr uint32_t kNumHeroKnobs  = 5;
     static constexpr uint32_t kNumSmallKnobs = 6; // AMP/ENV
     static constexpr uint32_t kNumLfoKnobs = 4;   // LFO1 rate/shape, LFO2 rate/shape
+    static constexpr uint32_t kNumXYMacros = 8;
 
     Knob macro[kNumMacroKnobs];
     Knob hero[kNumHeroKnobs];
     Knob small[kNumSmallKnobs];
     Knob lfo[kNumLfoKnobs];
+    Knob xyMacros[kNumXYMacros]; // macro knobs shown on XY tab
+    float xyMacroY = 0.0f;       // y-centre of XY macro strip
 
     int activeKnobGroup = -1; // 0=macro,1=hero,2=small,3=lfo
     int activeKnobIndex = -1;
@@ -121,6 +124,8 @@ private:
         Density,
         Spray,
         Pitch,
+        SampleStart,
+        SampleEnd,
         COUNT
     };
 
