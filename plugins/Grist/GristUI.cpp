@@ -285,12 +285,13 @@ void GristUI::initKnobs()
     // LFO knobs: MOD — placed after AMP/ENV with a section gap
     const float lfoStartX = startX + kNumSmallKnobs * step + 60.0f * knobScale;
     const struct { uint32_t p; float minV; float maxV; float defV; const char* label; const char* unit; bool bipolar; } ldefs[kNumLfoKnobs] = {
-        { kParamLfo1RateHz, 0.01f, 20.0f, 0.25f, "L1 RT",  "Hz", false },
-        { kParamLfo1Shape,  0.0f,  4.0f,  0.0f,  "L1 SH",  "",   false },
-        { kParamLfo1Amp,    0.0f,  1.0f,  1.0f,  "L1 AMP", "",   false },
-        { kParamLfo2RateHz, 0.01f, 20.0f, 0.10f, "L2 RT",  "Hz", false },
-        { kParamLfo2Shape,  0.0f,  4.0f,  0.0f,  "L2 SH",  "",   false },
-        { kParamLfo2Amp,    0.0f,  1.0f,  1.0f,  "L2 AMP", "",   false },
+        { kParamLfo1RateHz,  0.01f, 20.0f, 0.25f, "L1 RT",  "Hz", false },
+        { kParamLfo1Shape,   0.0f,  4.0f,  0.0f,  "L1 SH",  "",   false },
+        { kParamLfo1Amp,     0.0f,  1.0f,  1.0f,  "L1 AMP", "",   false },
+        { kParamLfo2RateHz,  0.01f, 20.0f, 0.10f, "L2 RT",  "Hz", false },
+        { kParamLfo2Shape,   0.0f,  4.0f,  0.0f,  "L2 SH",  "",   false },
+        { kParamLfo2Amp,     0.0f,  1.0f,  1.0f,  "L2 AMP", "",   false },
+        { kParamKeyModScale, 0.0f,  1.0f,  0.0f,  "KEY SC", "",   false },
     };
 
     for (uint32_t i = 0; i < kNumLfoKnobs; ++i)
@@ -1196,6 +1197,14 @@ void GristUI::formatKnobValue(const Knob& k, char* buf, size_t bufSize) const
     if (k.param == kParamFilterType)
     {
         std::snprintf(buf, bufSize, "%s", k.value >= 0.5f ? "LPF" : "HPF");
+        return;
+    }
+
+    // Key mod scale: display as "X%/st" (percent of selected area per semitone, at slot amount=1)
+    if (k.param == kParamKeyModScale)
+    {
+        const float perSemi = lerp(0.01f, 0.50f, fclampf(k.value, 0.0f, 1.0f));
+        std::snprintf(buf, bufSize, "%.0f%%/st", perSemi * 100.0f);
         return;
     }
 

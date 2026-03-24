@@ -57,6 +57,9 @@ enum Parameters {
     kParamLfo2Shape,
     kParamLfo2Amp,
 
+    // Keytrack/keyboard modulation scaling (affects how much Key→Position changes per semitone)
+    kParamKeyModScale,
+
     // XY performance pad (can be automated / MIDI-mapped)
     kParamX,
     kParamY,

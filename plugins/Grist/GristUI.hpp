@@ -75,7 +75,7 @@ private:
     static constexpr uint32_t kNumMacroKnobs = 2;
     static constexpr uint32_t kNumHeroKnobs  = 5;
     static constexpr uint32_t kNumSmallKnobs = 6; // AMP/ENV
-    static constexpr uint32_t kNumLfoKnobs = 6;   // LFO1 rate/shape/amp, LFO2 rate/shape/amp
+    static constexpr uint32_t kNumLfoKnobs = 7;   // LFO1 rate/shape/amp, LFO2 rate/shape/amp, Key scale
     static constexpr uint32_t kNumFilterKnobs = 3; // TYPE + Cutoff + Resonance
     static constexpr uint32_t kNumRevKnobs = 3;    // MIX + LENGTH + HPF
     static constexpr uint32_t kNumXYMacros = 8;

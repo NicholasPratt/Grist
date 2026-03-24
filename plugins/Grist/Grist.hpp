@@ -72,6 +72,7 @@ private:
     float fLfo2RateHz;
     float fLfo2Shape;
     float fLfo2Amp;
+    float fKeyModScale;    // 0..1 (maps to ~1%..50% position change per semitone when using Key→Position)
     float fFilterCutoff;   // Hz, 20..20000
     float fFilterRes;      // 0..1
     float fPitchLock;      // 0/1

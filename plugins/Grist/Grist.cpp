@@ -67,6 +67,7 @@ Grist::Grist()
       fLfo2RateHz(0.10f),
       fLfo2Shape(0.0f),
       fLfo2Amp(1.0f),
+      fKeyModScale(0.0f),
       fFilterCutoff(40.0f),
       fFilterRes(0.0f),
       fPitchLock(0.0f),
@@ -721,6 +722,15 @@ void Grist::initParameter(uint32_t index, Parameter& parameter)
         parameter.ranges.max = 1.0f;
         break;
 
+    case kParamKeyModScale:
+        parameter.name = "Key Mod Scale";
+        parameter.symbol = "key_mod_scale";
+        // 0..1 maps to ~1%..50% selected-area position shift per semitone (see run())
+        parameter.ranges.def = 0.0f;
+        parameter.ranges.min = 0.0f;
+        parameter.ranges.max = 1.0f;
+        break;
+
     case kParamFilterCutoff:
         parameter.name = "Filter Cutoff";
         parameter.symbol = "filter_cutoff";
@@ -810,6 +820,7 @@ float Grist::getParameterValue(uint32_t index) const
     case kParamLfo2RateHz: return fLfo2RateHz;
     case kParamLfo2Shape: return fLfo2Shape;
     case kParamLfo2Amp: return fLfo2Amp;
+    case kParamKeyModScale: return fKeyModScale;
     case kParamX: return fX;
     case kParamY: return fY;
     case kParamMacro1: return fMacro[0];
@@ -893,6 +904,7 @@ void Grist::setParameterValue(uint32_t index, float value)
         fLfo2Shape = fclampf(std::round(value), 0.0f, 4.0f);
         break;
     case kParamLfo2Amp: fLfo2Amp = fclampf(value, 0.0f, 1.0f); break;
+    case kParamKeyModScale: fKeyModScale = fclampf(value, 0.0f, 1.0f); break;
     case kParamFilterCutoff: fFilterCutoff = fclampf(value, 20.0f, 20000.0f); break;
     case kParamFilterRes: fFilterRes = fclampf(value, 0.0f, 1.0f); break;
     case kParamPitchLock: fPitchLock = (value >= 0.5f) ? 1.0f : 0.0f; break;
@@ -1575,7 +1587,21 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
                         {
                             const auto& sl = modMatrix.slots[(uint32_t)tgt][si];
                             if (sl.source == GristMod::Source::None || sl.amount == 0.0f) continue;
-                            m += srcValue(sl.source) * sl.amount;
+
+                            float sv = srcValue(sl.source);
+
+                            // Key→Position: make keytrack feel musically useful for finding rhythms/melodies.
+                            // We interpret fKeyModScale so that, with slot amount=1.0:
+                            // - at min: 1 semitone changes grain position by ~1% of the selected area
+                            // - at max: 1 semitone changes grain position by ~50% of the selected area
+                            if (tgt == GristMod::Target::Position && sl.source == GristMod::Source::Keytrack)
+                            {
+                                const float perSemi = lerp(0.01f, 0.50f, fKeyModScale);
+                                const float denom = std::max(1e-6f, 0.5f / perSemi); // because Position target uses *0.50 later
+                                sv = fclampf((float)(voice.note - 60) / denom, -1.0f, 1.0f);
+                            }
+
+                            m += sv * sl.amount;
                         }
                         return fclampf(m, -1.0f, 1.0f);
                     };
