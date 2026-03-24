@@ -65,11 +65,17 @@ pos:0:lfo1:0.40;pitch:0:lfo2:-0.15
 
 Parsing occurs in `setState()` (non-RT). The audio thread only reads the resulting fixed-size arrays.
 
-## UI plan (later)
+## Current UI behaviour (as implemented)
 
-- Each modulated parameter shows **3 boxes** (slots).
-- Clicking a box opens a selector for source + amount.
-- UI writes the `mod_matrix` state string.
+On the **Perform** tab, modulated parameters show **3 boxes** (slots).
+
+- **Left-click** a slot: cycle through sources (`None → LFO1 → LFO2 → Env1 → … → M8 → None`).
+  - When cycling to `None`, the slot amount is reset to 0.
+  - When cycling from `None` to a source and the amount is 0, it initializes to a small default (currently `0.10`).
+- **Left-click + drag** up/down on a slot: adjust amount in `[-1, +1]`.
+- **Right-click** a slot: clear the **source assignment only** (no confirmation prompt).
+
+The UI persists routing via the `mod_matrix` state string.
 
 ## Future
 

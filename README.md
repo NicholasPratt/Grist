@@ -17,6 +17,14 @@ The goal is a playable, *lush*, polyphonic granular instrument with a big, frien
   - Position + spray
   - Pitch + random pitch
   - **Per-note pitch envelope** (amount + decay)
+- **Filter + Reverb (WIP)**
+  - Filter cutoff knob is **logarithmic** (more travel in low frequencies)
+  - Reverb HPF knob is **logarithmic**
+- **Modulation slots (WIP)**
+  - Lemondrop-style "3 slots per target" routing (stored as state)
+  - **Click** a slot to cycle its source
+  - **Drag** up/down on a slot to adjust amount
+  - **Right-click** a slot to clear the **source assignment only** (no prompt)
 - **Polyphony**
   - 16 voices with quietest-voice stealing
   - Optional “New Voice” retrigger mode (layering)
