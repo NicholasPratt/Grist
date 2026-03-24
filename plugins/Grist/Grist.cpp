@@ -68,6 +68,11 @@ Grist::Grist()
       fLfo2Shape(0.0f),
       fLfo2Amp(1.0f),
       fKeyModScale(0.0f),
+      fModEnvAttackMs(5.0f),
+      fModEnvDecayMs(120.0f),
+      fModEnvSustain(0.7f),
+      fModEnvReleaseMs(220.0f),
+      fModEnvPolarity(0.0f),
       fFilterCutoff(40.0f),
       fFilterRes(0.0f),
       fPitchLock(0.0f),
@@ -107,6 +112,8 @@ Grist::Grist()
         voices[v].note = 60;
         voices[v].velocity = 1.0f;
         voices[v].env = 0.0f;
+        voices[v].modEnv = 0.0f;
+        voices[v].modEnvStage = 0;
         voices[v].pitchEnv = 0.0f;
         voices[v].samplesToNextGrain = 0.0;
         for (uint32_t g = 0; g < Voice::kMaxGrains; ++g)
@@ -270,6 +277,8 @@ void Grist::activate()
         voices[v].gate = false;
         voices[v].releasing = false;
         voices[v].env = 0.0f;
+        voices[v].modEnv = 0.0f;
+        voices[v].modEnvStage = 0;
         voices[v].pitchEnv = 0.0f;
         voices[v].samplesToNextGrain = 0.0;
         for (uint32_t g = 0; g < Voice::kMaxGrains; ++g)
@@ -731,6 +740,47 @@ void Grist::initParameter(uint32_t index, Parameter& parameter)
         parameter.ranges.max = 1.0f;
         break;
 
+    case kParamModEnvAttackMs:
+        parameter.name = "Mod Env Attack";
+        parameter.symbol = "mod_env_attack";
+        parameter.unit = "ms";
+        parameter.ranges.def = 5.0f;
+        parameter.ranges.min = 0.0f;
+        parameter.ranges.max = 5000.0f;
+        break;
+    case kParamModEnvDecayMs:
+        parameter.name = "Mod Env Decay";
+        parameter.symbol = "mod_env_decay";
+        parameter.unit = "ms";
+        parameter.ranges.def = 120.0f;
+        parameter.ranges.min = 0.0f;
+        parameter.ranges.max = 5000.0f;
+        break;
+    case kParamModEnvSustain:
+        parameter.name = "Mod Env Sustain";
+        parameter.symbol = "mod_env_sustain";
+        parameter.ranges.def = 0.7f;
+        parameter.ranges.min = 0.0f;
+        parameter.ranges.max = 1.0f;
+        break;
+    case kParamModEnvReleaseMs:
+        parameter.name = "Mod Env Release";
+        parameter.symbol = "mod_env_release";
+        parameter.unit = "ms";
+        parameter.ranges.def = 220.0f;
+        parameter.ranges.min = 0.0f;
+        parameter.ranges.max = 8000.0f;
+        break;
+    case kParamModEnvPolarity:
+        parameter.name = "Mod Env Polarity";
+        parameter.symbol = "mod_env_polarity";
+        parameter.hints |= kParameterIsInteger;
+        // 0=UNI (0..1), 1=BI (-1..1), 2=INV (inverted bipolar)
+        parameter.ranges.def = 0.0f;
+        parameter.ranges.min = 0.0f;
+        parameter.ranges.max = 2.0f;
+        break;
+
     case kParamFilterCutoff:
         parameter.name = "Filter Cutoff";
         parameter.symbol = "filter_cutoff";
@@ -821,6 +871,11 @@ float Grist::getParameterValue(uint32_t index) const
     case kParamLfo2Shape: return fLfo2Shape;
     case kParamLfo2Amp: return fLfo2Amp;
     case kParamKeyModScale: return fKeyModScale;
+    case kParamModEnvAttackMs: return fModEnvAttackMs;
+    case kParamModEnvDecayMs: return fModEnvDecayMs;
+    case kParamModEnvSustain: return fModEnvSustain;
+    case kParamModEnvReleaseMs: return fModEnvReleaseMs;
+    case kParamModEnvPolarity: return fModEnvPolarity;
     case kParamX: return fX;
     case kParamY: return fY;
     case kParamMacro1: return fMacro[0];
@@ -905,6 +960,11 @@ void Grist::setParameterValue(uint32_t index, float value)
         break;
     case kParamLfo2Amp: fLfo2Amp = fclampf(value, 0.0f, 1.0f); break;
     case kParamKeyModScale: fKeyModScale = fclampf(value, 0.0f, 1.0f); break;
+    case kParamModEnvAttackMs: fModEnvAttackMs = fclampf(value, 0.0f, 5000.0f); break;
+    case kParamModEnvDecayMs: fModEnvDecayMs = fclampf(value, 0.0f, 5000.0f); break;
+    case kParamModEnvSustain: fModEnvSustain = fclampf(value, 0.0f, 1.0f); break;
+    case kParamModEnvReleaseMs: fModEnvReleaseMs = fclampf(value, 0.0f, 8000.0f); break;
+    case kParamModEnvPolarity: fModEnvPolarity = fclampf(std::round(value), 0.0f, 2.0f); break;
     case kParamFilterCutoff: fFilterCutoff = fclampf(value, 20.0f, 20000.0f); break;
     case kParamFilterRes: fFilterRes = fclampf(value, 0.0f, 1.0f); break;
     case kParamPitchLock: fPitchLock = (value >= 0.5f) ? 1.0f : 0.0f; break;
@@ -1398,6 +1458,8 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
                     voice.note = note;
                     voice.velocity = (float)vel / 127.0f;
                     voice.env = 0.0f;
+                    voice.modEnv = 0.0f;
+                    voice.modEnvStage = 1; // attack
                     voice.pitchEnv = fPitchEnvAmt;
                     voice.samplesToNextGrain = 0.0;
 
@@ -1427,6 +1489,8 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
                 voice.note = note;
                 voice.velocity = (float)vel / 127.0f;
                 voice.env = 0.0f; // attack ramp
+                voice.modEnv = 0.0f;
+                voice.modEnvStage = 1; // attack
                 voice.pitchEnv = fPitchEnvAmt;
                 voice.samplesToNextGrain = 0.0;
 
@@ -1454,6 +1518,7 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
                     Voice& voice = voices[(uint32_t)v];
                     voice.gate = false;
                     voice.releasing = true;
+                    if (voice.modEnvStage != 0) voice.modEnvStage = 4; // release
                 }
             }
             else
@@ -1465,6 +1530,7 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
                     Voice& voice = voices[(uint32_t)v];
                     voice.gate = false;
                     voice.releasing = true;
+                    if (voice.modEnvStage != 0) voice.modEnvStage = 4; // release
                 }
             }
         }
@@ -1479,6 +1545,18 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
 
     const uint32_t releaseSamples = (uint32_t)std::max(1.0, ((double)fReleaseMs / 1000.0) * fSampleRate);
     const float releaseDec = 1.0f / (float)releaseSamples;
+
+    // Mod ADSR increments
+    const uint32_t modAtkSamp = (uint32_t)std::max(1.0, ((double)fModEnvAttackMs / 1000.0) * fSampleRate);
+    const float modAtkInc = (fModEnvAttackMs <= 0.0f) ? 1.0f : (1.0f / (float)modAtkSamp);
+
+    const uint32_t modDecSamp = (uint32_t)std::max(1.0, ((double)fModEnvDecayMs / 1000.0) * fSampleRate);
+    const float modDecStep = (fModEnvDecayMs <= 0.0f) ? 1.0f : (1.0f / (float)modDecSamp);
+
+    const uint32_t modRelSamp = (uint32_t)std::max(1.0, ((double)fModEnvReleaseMs / 1000.0) * fSampleRate);
+    const float modRelDec = (fModEnvReleaseMs <= 0.0f) ? 1.0f : (1.0f / (float)modRelSamp);
+
+    const float modSus = fclampf(fModEnvSustain, 0.0f, 1.0f);
 
     // per-note pitch envelope decay (semitones per sample)
     const uint32_t pitchDecaySamples = (uint32_t)std::max(1.0, ((double)fPitchEnvDecayMs / 1000.0) * fSampleRate);
@@ -1525,6 +1603,8 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
                     voice.env = 0.0f;
                     voice.active = false;
                     voice.releasing = false;
+                    voice.modEnvStage = 0;
+                    voice.modEnv = 0.0f;
                     // grains will be ignored once inactive
                     continue;
                 }
@@ -1537,6 +1617,28 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
                     voice.env += attackInc;
                     if (voice.env > 1.0f) voice.env = 1.0f;
                 }
+            }
+
+            // Mod ADSR
+            switch (voice.modEnvStage)
+            {
+            default:
+            case 0: break; // idle
+            case 1: // attack
+                voice.modEnv += modAtkInc;
+                if (voice.modEnv >= 1.0f) { voice.modEnv = 1.0f; voice.modEnvStage = 2; }
+                break;
+            case 2: // decay
+                voice.modEnv -= modDecStep;
+                if (voice.modEnv <= modSus) { voice.modEnv = modSus; voice.modEnvStage = 3; }
+                break;
+            case 3: // sustain
+                voice.modEnv = modSus;
+                break;
+            case 4: // release
+                voice.modEnv -= modRelDec;
+                if (voice.modEnv <= 0.0f) { voice.modEnv = 0.0f; voice.modEnvStage = 0; }
+                break;
             }
 
             // pitch envelope (decays toward 0 semitones)
@@ -1566,6 +1668,13 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
                         case GristMod::Source::LFO1: return lfo1;
                         case GristMod::Source::LFO2: return lfo2;
                         case GristMod::Source::Env1: return voice.env * 2.0f - 1.0f;
+                        case GristMod::Source::ADSR:
+                        {
+                            const int pol = (int)fclampf(fModEnvPolarity, 0.0f, 2.0f);
+                            if (pol == 0) return voice.modEnv;                 // uni: 0..1
+                            if (pol == 2) return -(voice.modEnv * 2.0f - 1.0f); // inverted bipolar
+                            return voice.modEnv * 2.0f - 1.0f;                 // bipolar
+                        }
                         case GristMod::Source::Velocity: return voice.velocity * 2.0f - 1.0f;
                         case GristMod::Source::Keytrack: return fclampf((float)(voice.note - 60) / 24.0f, -1.0f, 1.0f);
                         case GristMod::Source::X: return fX;
@@ -1752,7 +1861,39 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
     }
 
     // --- Reverb (post-synth, pre-filter) ---
-    if (fRevMix > 0.0001f)
+    // Allow global modulation of reverb mix.
+    float revMixMod = 0.0f;
+    {
+        float m = 0.0f;
+        const float lfo1Blk = lfoValue(lfo1Phase, (int)fLfo1Shape, lfo1Hold) * fLfo1Amp;
+        const float lfo2Blk = lfoValue(lfo2Phase, (int)fLfo2Shape, lfo2Hold) * fLfo2Amp;
+        for (uint32_t si = 0; si < GristMod::kMaxSlotsPerTarget; ++si)
+        {
+            const auto& sl = modMatrix.slots[(uint32_t)GristMod::Target::RevMix][si];
+            if (sl.source == GristMod::Source::None || sl.amount == 0.0f) continue;
+            float sv = 0.0f;
+            switch (sl.source) {
+                case GristMod::Source::LFO1: sv = lfo1Blk; break;
+                case GristMod::Source::LFO2: sv = lfo2Blk; break;
+                case GristMod::Source::X: sv = fX; break;
+                case GristMod::Source::Y: sv = fY; break;
+                case GristMod::Source::Macro1: sv = fMacro[0]; break;
+                case GristMod::Source::Macro2: sv = fMacro[1]; break;
+                case GristMod::Source::Macro3: sv = fMacro[2]; break;
+                case GristMod::Source::Macro4: sv = fMacro[3]; break;
+                case GristMod::Source::Macro5: sv = fMacro[4]; break;
+                case GristMod::Source::Macro6: sv = fMacro[5]; break;
+                case GristMod::Source::Macro7: sv = fMacro[6]; break;
+                case GristMod::Source::Macro8: sv = fMacro[7]; break;
+                default: sv = 0.0f; break;
+            }
+            m += sv * sl.amount;
+        }
+        revMixMod = fclampf(m, -1.0f, 1.0f);
+    }
+
+    const float revMix = fclampf(fRevMix + revMixMod * 0.50f, 0.0f, 1.0f);
+    if (revMix > 0.0001f)
     {
         float* oL = outputs[0];
         float* oR = outputs[1];
@@ -1790,7 +1931,7 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
             fRevHpX2R = fRevHpX1R; fRevHpX1R = wetR;
             fRevHpY2R = fRevHpY1R; fRevHpY1R = hpR;
 
-            const float mix = fRevMix;
+            const float mix = revMix;
             oL[i] = inL * (1.0f - mix) + hpL * mix;
             oR[i] = inR * (1.0f - mix) + hpR * mix;
         }

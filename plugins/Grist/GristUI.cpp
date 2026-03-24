@@ -285,13 +285,18 @@ void GristUI::initKnobs()
     // LFO knobs: MOD — placed after AMP/ENV with a section gap
     const float lfoStartX = startX + kNumSmallKnobs * step + 60.0f * knobScale;
     const struct { uint32_t p; float minV; float maxV; float defV; const char* label; const char* unit; bool bipolar; } ldefs[kNumLfoKnobs] = {
-        { kParamLfo1RateHz,  0.01f, 20.0f, 0.25f, "L1 RT",  "Hz", false },
-        { kParamLfo1Shape,   0.0f,  4.0f,  0.0f,  "L1 SH",  "",   false },
-        { kParamLfo1Amp,     0.0f,  1.0f,  1.0f,  "L1 AMP", "",   false },
-        { kParamLfo2RateHz,  0.01f, 20.0f, 0.10f, "L2 RT",  "Hz", false },
-        { kParamLfo2Shape,   0.0f,  4.0f,  0.0f,  "L2 SH",  "",   false },
-        { kParamLfo2Amp,     0.0f,  1.0f,  1.0f,  "L2 AMP", "",   false },
-        { kParamKeyModScale, 0.0f,  1.0f,  0.0f,  "KEY SC", "",   false },
+        { kParamLfo1RateHz,       0.01f, 20.0f, 0.25f, "L1 RT",  "Hz", false },
+        { kParamLfo1Shape,        0.0f,  4.0f,  0.0f,  "L1 SH",  "",   false },
+        { kParamLfo1Amp,          0.0f,  1.0f,  1.0f,  "L1 AMP", "",   false },
+        { kParamLfo2RateHz,       0.01f, 20.0f, 0.10f, "L2 RT",  "Hz", false },
+        { kParamLfo2Shape,        0.0f,  4.0f,  0.0f,  "L2 SH",  "",   false },
+        { kParamLfo2Amp,          0.0f,  1.0f,  1.0f,  "L2 AMP", "",   false },
+        { kParamKeyModScale,      0.0f,  1.0f,  0.0f,  "KEY SC", "",   false },
+        { kParamModEnvAttackMs,   0.0f,  5000.0f, 5.0f,   "E ATK", "ms", false },
+        { kParamModEnvDecayMs,    0.0f,  5000.0f, 120.0f, "E DEC", "ms", false },
+        { kParamModEnvSustain,    0.0f,  1.0f,    0.7f,   "E SUS", "",   false },
+        { kParamModEnvReleaseMs,  0.0f,  8000.0f, 220.0f, "E REL", "ms", false },
+        { kParamModEnvPolarity,   0.0f,  2.0f,    0.0f,   "E POL", "",   false },
     };
 
     for (uint32_t i = 0; i < kNumLfoKnobs; ++i)
@@ -1208,6 +1213,16 @@ void GristUI::formatKnobValue(const Knob& k, char* buf, size_t bufSize) const
         return;
     }
 
+    // Mod env polarity
+    if (k.param == kParamModEnvPolarity)
+    {
+        const int p = (int)std::lround(k.value);
+        if (p == 0) std::snprintf(buf, bufSize, "UNI");
+        else if (p == 2) std::snprintf(buf, bufSize, "INV");
+        else std::snprintf(buf, bufSize, "BI");
+        return;
+    }
+
     // Human-readable millisecond formatting
     if (k.unit && std::strcmp(k.unit, "ms") == 0)
     {
@@ -1835,6 +1850,16 @@ void GristUI::onNanoDisplay()
     // Row 1: REVERB knobs
     for (uint32_t i = 0; i < kNumRevKnobs; ++i)
         drawKnob(revKnobs[i], activeKnobGroup == 6 && activeKnobIndex == (int)i);
+    {
+        // mod slots below REV MIX knob (revKnobs[0])
+        const Knob& mk = revKnobs[0];
+        const float bs = 12.0f;
+        const float gap = 6.0f;
+        const float slotsW = kSlotsPerTarget * bs + (kSlotsPerTarget - 1) * gap;
+        const float bx0 = mk.x - slotsW * 0.5f;
+        const float by0 = mk.y + mk.r + 42.0f;
+        drawModSlotsForParam(mk.param, bx0, by0);
+    }
 
     // Row 2: AMP/ENV small knobs
     for (uint32_t i = 0; i < kNumSmallKnobs; ++i)
@@ -2174,6 +2199,7 @@ const char* GristUI::modSourceId(ModSource s) const
     case ModSource::LFO1: return "lfo1";
     case ModSource::LFO2: return "lfo2";
     case ModSource::Env1: return "env1";
+    case ModSource::ADSR: return "adsr";
     case ModSource::Vel:  return "vel";
     case ModSource::Key:  return "key";
     case ModSource::X:    return "x";
@@ -2198,6 +2224,7 @@ const char* GristUI::modSourceLabel(ModSource s) const
     case ModSource::LFO1: return "L1";
     case ModSource::LFO2: return "L2";
     case ModSource::Env1: return "E1";
+    case ModSource::ADSR: return "AD";
     case ModSource::Vel:  return "Vel";
     case ModSource::Key:  return "Key";
     case ModSource::X:    return "X";
@@ -2230,6 +2257,7 @@ bool GristUI::sliderToModTarget(uint32_t param, ModTarget& tgt) const
     if (param == kParamSampleStart)  { tgt = ModTarget::SampleStart;  return true; }
     if (param == kParamSampleEnd)    { tgt = ModTarget::SampleEnd;    return true; }
     if (param == kParamFilterCutoff) { tgt = ModTarget::FilterCutoff; return true; }
+    if (param == kParamRevMix)       { tgt = ModTarget::RevMix;       return true; }
     return false;
 }
 
@@ -2265,6 +2293,7 @@ void GristUI::pushModMatrixState()
         case ModTarget::SampleStart:  return "sstart";
         case ModTarget::SampleEnd:    return "send";
         case ModTarget::FilterCutoff: return "fcut";
+        case ModTarget::RevMix:       return "rmix";
         }
     };
 
@@ -2306,6 +2335,7 @@ void GristUI::parseModMatrixState(const char* value)
         if (std::strcmp(id, "sstart") == 0) return (int)ModTarget::SampleStart;
         if (std::strcmp(id, "send") == 0)   return (int)ModTarget::SampleEnd;
         if (std::strcmp(id, "fcut") == 0)   return (int)ModTarget::FilterCutoff;
+        if (std::strcmp(id, "rmix") == 0)   return (int)ModTarget::RevMix;
         return -1;
     };
 
@@ -2314,6 +2344,7 @@ void GristUI::parseModMatrixState(const char* value)
         if (std::strcmp(id, "lfo1") == 0) return ModSource::LFO1;
         if (std::strcmp(id, "lfo2") == 0) return ModSource::LFO2;
         if (std::strcmp(id, "env1") == 0) return ModSource::Env1;
+        if (std::strcmp(id, "adsr") == 0) return ModSource::ADSR;
         if (std::strcmp(id, "vel") == 0)  return ModSource::Vel;
         if (std::strcmp(id, "key") == 0)  return ModSource::Key;
         if (std::strcmp(id, "x") == 0)    return ModSource::X;

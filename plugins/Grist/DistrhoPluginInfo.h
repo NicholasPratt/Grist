@@ -60,6 +60,13 @@ enum Parameters {
     // Keytrack/keyboard modulation scaling (affects how much Key→Position changes per semitone)
     kParamKeyModScale,
 
+    // Mod ADSR envelope (per-voice) for modulation routing
+    kParamModEnvAttackMs,
+    kParamModEnvDecayMs,
+    kParamModEnvSustain,
+    kParamModEnvReleaseMs,
+    kParamModEnvPolarity,
+
     // XY performance pad (can be automated / MIDI-mapped)
     kParamX,
     kParamY,

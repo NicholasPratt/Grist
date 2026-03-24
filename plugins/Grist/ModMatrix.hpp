@@ -18,6 +18,7 @@ enum class Source : uint8_t {
     LFO1,
     LFO2,
     Env1,
+    ADSR,
     Velocity,
     Keytrack,
     X,
@@ -42,6 +43,7 @@ enum class Target : uint8_t {
     SampleStart,    // 0..1 offset applied to grain playback start boundary
     SampleEnd,      // 0..1 offset applied to grain playback end boundary
     FilterCutoff,   // cutoff modulation (additive octaves * amount)
+    RevMix,         // reverb wet mix (0..1)
     COUNT
 };
 
@@ -68,6 +70,7 @@ struct Matrix {
         if (streq(id, "lfo1")) return Source::LFO1;
         if (streq(id, "lfo2")) return Source::LFO2;
         if (streq(id, "env1")) return Source::Env1;
+        if (streq(id, "adsr")) return Source::ADSR;
         if (streq(id, "vel"))  return Source::Velocity;
         if (streq(id, "key"))  return Source::Keytrack;
         if (streq(id, "x"))    return Source::X;
@@ -93,6 +96,7 @@ struct Matrix {
         if (streq(id, "sstart")) return Target::SampleStart;
         if (streq(id, "send"))   return Target::SampleEnd;
         if (streq(id, "fcut"))   return Target::FilterCutoff;
+        if (streq(id, "rmix"))   return Target::RevMix;
         return Target::Position;
     }
 };

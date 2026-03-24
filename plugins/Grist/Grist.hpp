@@ -73,6 +73,14 @@ private:
     float fLfo2Shape;
     float fLfo2Amp;
     float fKeyModScale;    // 0..1 (maps to ~1%..50% position change per semitone when using Key→Position)
+
+    // Mod ADSR (per voice)
+    float fModEnvAttackMs;
+    float fModEnvDecayMs;
+    float fModEnvSustain;   // 0..1
+    float fModEnvReleaseMs;
+    float fModEnvPolarity;  // 0=UNI(0..1), 1=BI(-1..1), 2=INV (inverted bipolar)
+
     float fFilterCutoff;   // Hz, 20..20000
     float fFilterRes;      // 0..1
     float fPitchLock;      // 0/1
@@ -170,6 +178,10 @@ private:
 
         // simple amp envelope (0..1)
         float env = 0.0f;
+
+        // Mod ADSR envelope (0..1)
+        float modEnv = 0.0f;
+        uint8_t modEnvStage = 0; // 0=idle,1=atk,2=dec,3=sus,4=rel
 
         // per-note pitch envelope (semitones, decays toward 0)
         float pitchEnv = 0.0f;
