@@ -952,6 +952,21 @@ bool GristUI::onMouse(const MouseEvent& ev)
                  : (g == 5) ? &filterKnobs[k]
                  : &revKnobs[k];
             knobDragStartValue = kk->value;
+
+            // Log knobs: treat drag as normalized 0..1 and map exponentially to Hz.
+            knobDragIsLog = (kk->param == kParamFilterCutoff || kk->param == kParamRevHPF);
+            if (knobDragIsLog)
+            {
+                const float minV = std::max(1e-6f, kk->minV);
+                const float maxV = std::max(minV * 1.0001f, kk->maxV);
+                const float vv = fclampf(kk->value, minV, maxV);
+                knobDragStartNorm = std::log(vv / minV) / std::log(maxV / minV);
+            }
+            else
+            {
+                knobDragStartNorm = 0.0f;
+            }
+
             repaint();
             return true;
         }
@@ -1107,10 +1122,24 @@ bool GristUI::onMotion(const MotionEvent& ev)
                  : &revKnobs[activeKnobIndex];
 
         const float dy = (knobDragStartY - my);
-        // scaled by range; 160 px for full sweep
+        // 160 px for full sweep
         const float t = dy / 160.0f;
-        float v = knobDragStartValue + t * (kk->maxV - kk->minV);
-        v = fclampf(v, kk->minV, kk->maxV);
+
+        float v = 0.0f;
+        if (knobDragIsLog && (kk->param == kParamFilterCutoff || kk->param == kParamRevHPF))
+        {
+            const float n = fclampf(knobDragStartNorm + t, 0.0f, 1.0f);
+            const float minV = std::max(1e-6f, kk->minV);
+            const float maxV = std::max(minV * 1.0001f, kk->maxV);
+            v = minV * std::pow(maxV / minV, n);
+        }
+        else
+        {
+            // linear
+            v = knobDragStartValue + t * (kk->maxV - kk->minV);
+            v = fclampf(v, kk->minV, kk->maxV);
+        }
+
         kk->value = v;
         setParamFromValue(kk->param, v);
         repaint();

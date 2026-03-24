@@ -725,6 +725,7 @@ void Grist::initParameter(uint32_t index, Parameter& parameter)
         parameter.name = "Filter Cutoff";
         parameter.symbol = "filter_cutoff";
         parameter.unit = "Hz";
+        parameter.hints |= kParameterIsLogarithmic;
         parameter.ranges.def = 40.0f;
         parameter.ranges.min = 20.0f;
         parameter.ranges.max = 20000.0f;
@@ -777,6 +778,7 @@ void Grist::initParameter(uint32_t index, Parameter& parameter)
         parameter.name = "Reverb HPF";
         parameter.symbol = "rev_hpf";
         parameter.unit = "Hz";
+        parameter.hints |= kParameterIsLogarithmic;
         parameter.ranges.def = 120.0f;
         parameter.ranges.min = 20.0f;
         parameter.ranges.max = 2000.0f;

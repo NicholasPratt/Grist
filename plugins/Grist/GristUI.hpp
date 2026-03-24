@@ -93,6 +93,8 @@ private:
     int activeKnobIndex = -1;
     float knobDragStartY = 0.0f;
     float knobDragStartValue = 0.0f;
+    float knobDragStartNorm = 0.0f;
+    bool knobDragIsLog = false;
 
     // XY tab
     float xyX = 0.0f, xyY = 0.0f, xyW = 0.0f, xyH = 0.0f;
