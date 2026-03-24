@@ -687,7 +687,8 @@ void GristUI::uiFileBrowserSelected(const char* filename)
 bool GristUI::onMouse(const MouseEvent& ev)
 {
     // right-click clears modulation slot
-    if (ev.button == 3 && ev.press && tab == Tab::Perform)
+    // NOTE: DPF mouse buttons: left=1, right=2, middle=3 (see dgl::MouseButton)
+    if (ev.button == 2 && ev.press && tab == Tab::Perform)
     {
         const float mx = ev.pos.getX() / sc;
         const float my = ev.pos.getY() / sc;
