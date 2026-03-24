@@ -93,6 +93,12 @@ enum Parameters {
 
     kParamFilterType,   // 0=HPF, 1=LPF
 
+    // Delay
+    kParamDelayMix,
+    kParamDelayTime,
+    kParamDelayFeedback,
+    kParamDelayHPF,
+
     // Reverb
     kParamRevMix,
     kParamRevLength,

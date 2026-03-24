@@ -64,10 +64,19 @@ private:
     float btnPlayX, btnPlayY, btnPlayW, btnPlayH; // preview play/stop
     float btnLatchX, btnLatchY, btnLatchW, btnLatchH; // latch toggle
     float btnPitchLockX, btnPitchLockY, btnPitchLockW, btnPitchLockH; // pitch lock toggle
+    float btnSavePatchX, btnSavePatchY, btnSavePatchW, btnSavePatchH;
+    float btnLoadPatchX, btnLoadPatchY, btnLoadPatchW, btnLoadPatchH;
     float tabX, tabY, tabW, tabH;
 
     bool latchOn = false; // cached UI state
     bool pitchLockOn = false;
+
+    // file browser mode
+    enum class FileBrowserMode : uint8_t { Sample, PatchLoad, PatchSave };
+    FileBrowserMode fbMode = FileBrowserMode::Sample;
+
+    // all parameter values cached for patch save
+    float cachedParams[kParamCount];
 
     char sampleLabel[200];
 
@@ -77,6 +86,7 @@ private:
     static constexpr uint32_t kNumSmallKnobs = 6; // AMP/ENV
     static constexpr uint32_t kNumLfoKnobs = 12;   // LFO1+LFO2 + key scale + mod ADSR
     static constexpr uint32_t kNumFilterKnobs = 3; // TYPE + Cutoff + Resonance
+    static constexpr uint32_t kNumDelayKnobs = 4;  // MIX + TIME + FDBK + HPF
     static constexpr uint32_t kNumRevKnobs = 3;    // MIX + LENGTH + HPF
     static constexpr uint32_t kNumXYMacros = 8;
 
@@ -85,11 +95,12 @@ private:
     Knob small[kNumSmallKnobs];
     Knob lfo[kNumLfoKnobs];
     Knob filterKnobs[kNumFilterKnobs];
+    Knob delayKnobs[kNumDelayKnobs];
     Knob revKnobs[kNumRevKnobs];
     Knob xyMacros[kNumXYMacros]; // macro knobs shown on XY tab
     float xyMacroY = 0.0f;       // y-centre of XY macro strip
 
-    int activeKnobGroup = -1; // 0=macro,1=hero,2=small,3=lfo,4=xyMacros,5=filterKnobs,6=revKnobs
+    int activeKnobGroup = -1; // 0=macro,1=hero,2=small,3=lfo,4=xyMacros,5=filterKnobs,6=delayKnobs,7=revKnobs
     int activeKnobIndex = -1;
     float knobDragStartY = 0.0f;
     float knobDragStartValue = 0.0f;
@@ -159,6 +170,9 @@ private:
     bool hitTestModBox(float x, float y, int& outTarget, int& outSlot) const;
 
     float sc = 1.0f; // current UI scale factor
+
+    void savePatchToFile(const char* path);
+    void loadPatchFromFile(const char* path);
 
     void initSliders();
     int hitTest(float x, float y) const;

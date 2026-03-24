@@ -77,6 +77,10 @@ Grist::Grist()
       fFilterRes(0.0f),
       fPitchLock(0.0f),
       fFilterType(0.0f),
+      fDelayMix(0.0f),
+      fDelayTime(250.0f),
+      fDelayFeedback(0.40f),
+      fDelayHPF(80.0f),
       fRevMix(0.0f),
       fRevLength(0.50f),
       fRevHPF(120.0f),
@@ -135,6 +139,7 @@ Grist::Grist()
 
     for (int i = 0; i < 8; ++i) fMacro[i] = 0.0f;
 
+    delayInit();
     reverbInit();
     reverbUpdate();
 }
@@ -249,7 +254,7 @@ void Grist::reverbUpdate()
     }
 
     // Reverb HPF biquad (Butterworth-ish)
-    const float fc = fclampf(fRevHPF, 20.0f, (float)(sr * 0.48));
+    const float fc = fclampf(fRevHPF, 20.0f, std::min(300.0f, (float)(sr * 0.48)));
     const float Q = 0.707f;
 
     const float w0 = 2.0f * 3.14159265f * fc / (float)sr;
@@ -263,6 +268,41 @@ void Grist::reverbUpdate()
     fRevHpB2 = (1.0f + cosW0) * 0.5f * a0r;
     fRevHpA1 = -2.0f * cosW0 * a0r;
     fRevHpA2 = (1.0f - alpha) * a0r;
+}
+
+// ---------------------------
+// Delay
+// ---------------------------
+
+void Grist::delayInit()
+{
+    const uint32_t maxLen = (uint32_t)std::ceil(2.001 * std::max(1.0, fSampleRate));
+    delayBufL.assign(maxLen, 0.0f);
+    delayBufR.assign(maxLen, 0.0f);
+    delayWriteIdx = 0;
+    fDlyHpX1L = fDlyHpX2L = fDlyHpY1L = fDlyHpY2L = 0.0f;
+    fDlyHpX1R = fDlyHpX2R = fDlyHpY1R = fDlyHpY2R = 0.0f;
+    delayUpdate();
+}
+
+void Grist::delayUpdate()
+{
+    const double sr = std::max(1.0, fSampleRate);
+    const uint32_t maxLen = delayBufL.empty() ? 1u : (uint32_t)delayBufL.size();
+    delayLen = std::min((uint32_t)std::max(1.0, std::ceil(fDelayTime * 0.001 * sr)), maxLen);
+
+    // HPF biquad coefficients (Butterworth Q=0.707)
+    const float fc = fclampf(fDelayHPF, 20.0f, std::min(300.0f, (float)(sr * 0.48)));
+    const float w0 = 2.0f * 3.14159265f * fc / (float)sr;
+    const float cosW0 = std::cos(w0);
+    const float sinW0 = std::sin(w0);
+    const float alpha = sinW0 / (2.0f * 0.707f);
+    const float a0r = 1.0f / (1.0f + alpha);
+    fDlyHpB0 =  (1.0f + cosW0) * 0.5f * a0r;
+    fDlyHpB1 = -(1.0f + cosW0) * a0r;
+    fDlyHpB2 =  (1.0f + cosW0) * 0.5f * a0r;
+    fDlyHpA1 = -2.0f * cosW0 * a0r;
+    fDlyHpA2 =  (1.0f - alpha) * a0r;
 }
 
 void Grist::activate()
@@ -301,6 +341,7 @@ void Grist::activate()
 void Grist::sampleRateChanged(double newSampleRate)
 {
     fSampleRate = newSampleRate > 1.0 ? newSampleRate : 48000.0;
+    delayInit();
     reverbInit();
     reverbUpdate();
 }
@@ -560,12 +601,12 @@ void Grist::initParameter(uint32_t index, Parameter& parameter)
         break;
 
     case kParamRandomPitch:
-        parameter.name = "Rnd Pitch";
+        parameter.name = "Scale";
         parameter.symbol = "random_pitch";
-        parameter.unit = "st";
+        parameter.hints |= kParameterIsInteger;
         parameter.ranges.def = 0.0f;
         parameter.ranges.min = 0.0f;
-        parameter.ranges.max = 12.0f;
+        parameter.ranges.max = 6.0f;
         break;
 
     case kParamPitchEnvAmt:
@@ -788,7 +829,7 @@ void Grist::initParameter(uint32_t index, Parameter& parameter)
         parameter.hints |= kParameterIsLogarithmic;
         parameter.ranges.def = 40.0f;
         parameter.ranges.min = 20.0f;
-        parameter.ranges.max = 20000.0f;
+        parameter.ranges.max = 8000.0f;
         break;
 
     case kParamFilterRes:
@@ -817,6 +858,44 @@ void Grist::initParameter(uint32_t index, Parameter& parameter)
         parameter.ranges.max = 1.0f;
         break;
 
+    case kParamDelayMix:
+        parameter.name = "Delay Mix";
+        parameter.symbol = "dly_mix";
+        parameter.unit = "%";
+        parameter.ranges.def = 0.0f;
+        parameter.ranges.min = 0.0f;
+        parameter.ranges.max = 100.0f;
+        break;
+
+    case kParamDelayTime:
+        parameter.name = "Delay Time";
+        parameter.symbol = "dly_time";
+        parameter.unit = "ms";
+        parameter.hints |= kParameterIsLogarithmic;
+        parameter.ranges.def = 250.0f;
+        parameter.ranges.min = 1.0f;
+        parameter.ranges.max = 2000.0f;
+        break;
+
+    case kParamDelayFeedback:
+        parameter.name = "Delay Feedback";
+        parameter.symbol = "dly_feedback";
+        parameter.unit = "%";
+        parameter.ranges.def = 40.0f;
+        parameter.ranges.min = 0.0f;
+        parameter.ranges.max = 98.0f;
+        break;
+
+    case kParamDelayHPF:
+        parameter.name = "Delay HPF";
+        parameter.symbol = "dly_hpf";
+        parameter.unit = "Hz";
+        parameter.hints |= kParameterIsLogarithmic;
+        parameter.ranges.def = 80.0f;
+        parameter.ranges.min = 20.0f;
+        parameter.ranges.max = 300.0f;
+        break;
+
     case kParamRevMix:
         parameter.name = "Reverb Mix";
         parameter.symbol = "rev_mix";
@@ -841,7 +920,7 @@ void Grist::initParameter(uint32_t index, Parameter& parameter)
         parameter.hints |= kParameterIsLogarithmic;
         parameter.ranges.def = 120.0f;
         parameter.ranges.min = 20.0f;
-        parameter.ranges.max = 2000.0f;
+        parameter.ranges.max = 300.0f;
         break;
     }
 }
@@ -893,9 +972,13 @@ float Grist::getParameterValue(uint32_t index) const
     case kParamFilterRes: return fFilterRes;
     case kParamPitchLock: return fPitchLock;
     case kParamFilterType: return fFilterType;
-    case kParamRevMix: return fRevMix * 100.0f;
-    case kParamRevLength: return fRevLength * 100.0f;
-    case kParamRevHPF: return fRevHPF;
+    case kParamDelayMix:      return fDelayMix * 100.0f;
+    case kParamDelayTime:     return fDelayTime;
+    case kParamDelayFeedback: return fDelayFeedback * 100.0f;
+    case kParamDelayHPF:      return fDelayHPF;
+    case kParamRevMix:        return fRevMix * 100.0f;
+    case kParamRevLength:     return fRevLength * 100.0f;
+    case kParamRevHPF:        return fRevHPF;
 
     default: return 0.0f;
     }
@@ -924,7 +1007,7 @@ void Grist::setParameterValue(uint32_t index, float value)
         fPitch = fclampf(value, -24.0f, 24.0f);
         break;
     case kParamRandomPitch:
-        fRandomPitch = fclampf(value, 0.0f, 12.0f);
+        fRandomPitch = fclampf(std::round(value), 0.0f, 6.0f);
         break;
     case kParamPitchEnvAmt:
         fPitchEnvAmt = fclampf(value, -48.0f, 48.0f);
@@ -965,7 +1048,7 @@ void Grist::setParameterValue(uint32_t index, float value)
     case kParamModEnvSustain: fModEnvSustain = fclampf(value, 0.0f, 1.0f); break;
     case kParamModEnvReleaseMs: fModEnvReleaseMs = fclampf(value, 0.0f, 8000.0f); break;
     case kParamModEnvPolarity: fModEnvPolarity = fclampf(std::round(value), 0.0f, 2.0f); break;
-    case kParamFilterCutoff: fFilterCutoff = fclampf(value, 20.0f, 20000.0f); break;
+    case kParamFilterCutoff: fFilterCutoff = fclampf(value, 20.0f, 8000.0f); break;
     case kParamFilterRes: fFilterRes = fclampf(value, 0.0f, 1.0f); break;
     case kParamPitchLock: fPitchLock = (value >= 0.5f) ? 1.0f : 0.0f; break;
     case kParamFilterType:
@@ -980,6 +1063,24 @@ void Grist::setParameterValue(uint32_t index, float value)
         break;
     }
 
+    case kParamDelayMix:
+        fDelayMix = fclampf(value / 100.0f, 0.0f, 1.0f);
+        break;
+
+    case kParamDelayTime:
+        fDelayTime = fclampf(value, 1.0f, 2000.0f);
+        delayUpdate();
+        break;
+
+    case kParamDelayFeedback:
+        fDelayFeedback = fclampf(value / 100.0f, 0.0f, 0.98f);
+        break;
+
+    case kParamDelayHPF:
+        fDelayHPF = fclampf(value, 20.0f, 300.0f);
+        delayUpdate();
+        break;
+
     case kParamRevMix:
         fRevMix = fclampf(value / 100.0f, 0.0f, 1.0f);
         break;
@@ -990,7 +1091,7 @@ void Grist::setParameterValue(uint32_t index, float value)
         break;
 
     case kParamRevHPF:
-        fRevHPF = fclampf(value, 20.0f, 2000.0f);
+        fRevHPF = fclampf(value, 20.0f, 300.0f);
         reverbUpdate();
         break;
 
@@ -1765,8 +1866,25 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
                         const double pitchEnvMul = std::pow(2.0, (double)voice.pitchEnv / 12.0);
                         const double baseInc = noteMul * pitchMul * pitchEnvMul * srMul;
 
-                        const float rp = fRandomPitch;
-                        const float rps = (rngFloat01() * 2.0f - 1.0f) * rp;
+                        // Scale-quantized grain pitch offset
+                        float rps = 0.0f;
+                        const int scaleSel = (int)std::lround(fRandomPitch);
+                        if (scaleSel > 0)
+                        {
+                            // Tables: semitone offsets for each scale mode
+                            static const int8_t kMinorOct[] = {-12,-10,-9,-7,-5,-4,-2,0,2,3,5,7,8,10,12};
+                            static const int8_t kMajorOct[] = {-12,-10,-8,-7,-5,-3,-1,0,2,4,5,7,9,11,12};
+                            static const int8_t kMin2nd[]   = {-1, 0, 1};
+                            static const int8_t kMaj2nd[]   = {-2, 0, 2};
+                            static const int8_t kMin3rd[]   = {-3, 0, 3};
+                            static const int8_t kMaj3rd[]   = {-4, 0, 4};
+                            static const int8_t* kTables[6] = { kMinorOct, kMajorOct, kMin2nd, kMaj2nd, kMin3rd, kMaj3rd };
+                            static const uint32_t kSizes[6] = { 15, 15, 3, 3, 3, 3 };
+                            const int ti = scaleSel - 1;
+                            const uint32_t sz = kSizes[ti];
+                            const uint32_t pick = (uint32_t)(rngFloat01() * (float)sz) % sz;
+                            rps = (float)kTables[ti][pick];
+                        }
                         const double randPitchMul = std::pow(2.0, (double)rps / 12.0);
 
                         Grain& g = voice.grains[(uint32_t)slot];
@@ -1860,7 +1978,103 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
         // soft clip moved to post-FX stage
     }
 
-    // --- Reverb (post-synth, pre-filter) ---
+    // --- Filter (post-synth) ---
+    {
+        float fcMod = 0.0f;
+        const float lfo1Blk = lfoValue(lfo1Phase, (int)fLfo1Shape, lfo1Hold) * fLfo1Amp;
+        const float lfo2Blk = lfoValue(lfo2Phase, (int)fLfo2Shape, lfo2Hold) * fLfo2Amp;
+        {
+            float m = 0.0f;
+            for (uint32_t si = 0; si < GristMod::kMaxSlotsPerTarget; ++si)
+            {
+                const auto& sl = modMatrix.slots[(uint32_t)GristMod::Target::FilterCutoff][si];
+                if (sl.source == GristMod::Source::None || sl.amount == 0.0f) continue;
+                float sv = 0.0f;
+                switch (sl.source) {
+                    case GristMod::Source::LFO1: sv = lfo1Blk; break;
+                    case GristMod::Source::LFO2: sv = lfo2Blk; break;
+                    case GristMod::Source::X: sv = fX; break;
+                    case GristMod::Source::Y: sv = fY; break;
+                    case GristMod::Source::Macro1: sv = fMacro[0]; break;
+                    case GristMod::Source::Macro2: sv = fMacro[1]; break;
+                    case GristMod::Source::Macro3: sv = fMacro[2]; break;
+                    case GristMod::Source::Macro4: sv = fMacro[3]; break;
+                    case GristMod::Source::Macro5: sv = fMacro[4]; break;
+                    case GristMod::Source::Macro6: sv = fMacro[5]; break;
+                    case GristMod::Source::Macro7: sv = fMacro[6]; break;
+                    case GristMod::Source::Macro8: sv = fMacro[7]; break;
+                    default: sv = 0.0f; break;
+                }
+                m += sv * sl.amount;
+            }
+            fcMod = fclampf(m, -1.0f, 1.0f);
+        }
+        const float fc = fclampf(fFilterCutoff * std::pow(2.0f, fcMod * 4.0f), 20.0f, std::min(8000.0f, (float)(fSampleRate * 0.48)));
+        const float Q = 0.707f + fFilterRes * 11.293f;
+        const float w0 = 2.0f * 3.14159265f * fc / (float)fSampleRate;
+        const float cosW0 = std::cos(w0);
+        const float sinW0 = std::sin(w0);
+        const float alpha = sinW0 / (2.0f * Q);
+        const float a0r = 1.0f / (1.0f + alpha);
+        float bqB0, bqB1, bqB2;
+        if (fFilterType >= 0.5f) {
+            bqB0 = (1.0f - cosW0) * 0.5f * a0r;
+            bqB1 = (1.0f - cosW0) * a0r;
+            bqB2 = (1.0f - cosW0) * 0.5f * a0r;
+        } else {
+            bqB0 = (1.0f + cosW0) * 0.5f * a0r;
+            bqB1 = -(1.0f + cosW0) * a0r;
+            bqB2 = (1.0f + cosW0) * 0.5f * a0r;
+        }
+        const float bqA1 = -2.0f * cosW0 * a0r;
+        const float bqA2 = (1.0f - alpha) * a0r;
+        float* outL = outputs[0];
+        float* outR = outputs[1];
+        for (uint32_t i = 0; i < frames; ++i)
+        {
+            const float inL = outL[i];
+            const float yL = bqB0*inL + bqB1*fBqX1L + bqB2*fBqX2L - bqA1*fBqY1L - bqA2*fBqY2L;
+            fBqX2L = fBqX1L; fBqX1L = inL; fBqY2L = fBqY1L; fBqY1L = yL;
+            outL[i] = yL;
+            const float inR = outR[i];
+            const float yR = bqB0*inR + bqB1*fBqX1R + bqB2*fBqX2R - bqA1*fBqY1R - bqA2*fBqY2R;
+            fBqX2R = fBqX1R; fBqX1R = inR; fBqY2R = fBqY1R; fBqY1R = yR;
+            outR[i] = yR;
+        }
+    }
+
+    // --- Delay ---
+    if (fDelayMix > 0.0001f && !delayBufL.empty() && delayLen > 0)
+    {
+        float* oL = outputs[0];
+        float* oR = outputs[1];
+        const float mix = fclampf(fDelayMix, 0.0f, 1.0f);
+        const float fb  = fclampf(fDelayFeedback, 0.0f, 0.98f);
+        const uint32_t bufSize = (uint32_t)delayBufL.size();
+        for (uint32_t i = 0; i < frames; ++i)
+        {
+            const uint32_t readIdx = (delayWriteIdx + bufSize - delayLen) % bufSize;
+            float dL = delayBufL[readIdx];
+            float dR = delayBufR[readIdx];
+
+            // HPF on the delayed signal
+            const float hpL = fDlyHpB0*dL + fDlyHpB1*fDlyHpX1L + fDlyHpB2*fDlyHpX2L
+                            - fDlyHpA1*fDlyHpY1L - fDlyHpA2*fDlyHpY2L;
+            fDlyHpX2L = fDlyHpX1L; fDlyHpX1L = dL; fDlyHpY2L = fDlyHpY1L; fDlyHpY1L = hpL;
+            const float hpR = fDlyHpB0*dR + fDlyHpB1*fDlyHpX1R + fDlyHpB2*fDlyHpX2R
+                            - fDlyHpA1*fDlyHpY1R - fDlyHpA2*fDlyHpY2R;
+            fDlyHpX2R = fDlyHpX1R; fDlyHpX1R = dR; fDlyHpY2R = fDlyHpY1R; fDlyHpY1R = hpR;
+
+            delayBufL[delayWriteIdx] = oL[i] + hpL * fb;
+            delayBufR[delayWriteIdx] = oR[i] + hpR * fb;
+            delayWriteIdx = (delayWriteIdx + 1) % bufSize;
+
+            oL[i] = oL[i] * (1.0f - mix) + hpL * mix;
+            oR[i] = oR[i] * (1.0f - mix) + hpR * mix;
+        }
+    }
+
+    // --- Reverb (post-delay) ---
     // Allow global modulation of reverb mix.
     float revMixMod = 0.0f;
     {
@@ -1934,93 +2148,6 @@ void Grist::run(const float** /*inputs*/, float** outputs, uint32_t frames,
             const float mix = revMix;
             oL[i] = inL * (1.0f - mix) + hpL * mix;
             oR[i] = inR * (1.0f - mix) + hpR * mix;
-        }
-    }
-
-    // --- Resonant biquad HPF (stereo, applied per block) ---
-    {
-        // Compute modulated filter cutoff
-        float fcMod = 0.0f;
-        // Use the last LFO values from the frame loop (lfo1/lfo2 are block-level locals
-        // captured below by recomputing from current phases)
-        const float lfo1Blk = lfoValue(lfo1Phase, (int)fLfo1Shape, lfo1Hold) * fLfo1Amp;
-        const float lfo2Blk = lfoValue(lfo2Phase, (int)fLfo2Shape, lfo2Hold) * fLfo2Amp;
-        {
-            float m = 0.0f;
-            for (uint32_t si = 0; si < GristMod::kMaxSlotsPerTarget; ++si)
-            {
-                const auto& sl = modMatrix.slots[(uint32_t)GristMod::Target::FilterCutoff][si];
-                if (sl.source == GristMod::Source::None || sl.amount == 0.0f) continue;
-                float sv = 0.0f;
-                switch (sl.source) {
-                    case GristMod::Source::LFO1: sv = lfo1Blk; break;
-                    case GristMod::Source::LFO2: sv = lfo2Blk; break;
-                    case GristMod::Source::X: sv = fX; break;
-                    case GristMod::Source::Y: sv = fY; break;
-                    case GristMod::Source::Macro1: sv = fMacro[0]; break;
-                    case GristMod::Source::Macro2: sv = fMacro[1]; break;
-                    case GristMod::Source::Macro3: sv = fMacro[2]; break;
-                    case GristMod::Source::Macro4: sv = fMacro[3]; break;
-                    case GristMod::Source::Macro5: sv = fMacro[4]; break;
-                    case GristMod::Source::Macro6: sv = fMacro[5]; break;
-                    case GristMod::Source::Macro7: sv = fMacro[6]; break;
-                    case GristMod::Source::Macro8: sv = fMacro[7]; break;
-                    default: sv = 0.0f; break;
-                }
-                m += sv * sl.amount;
-            }
-            fcMod = fclampf(m, -1.0f, 1.0f);
-        }
-
-        // Effective cutoff: base * 2^(mod * 4 octaves)
-        const float fc = fclampf(fFilterCutoff * std::pow(2.0f, fcMod * 4.0f), 20.0f, (float)(fSampleRate * 0.48));
-
-        // Q from resonance: 0->0.707, 1->12
-        const float Q = 0.707f + fFilterRes * 11.293f;
-
-        // Biquad filter coefficients (HPF or LPF based on fFilterType)
-        const float w0 = 2.0f * 3.14159265f * fc / (float)fSampleRate;
-        const float cosW0 = std::cos(w0);
-        const float sinW0 = std::sin(w0);
-        const float alpha = sinW0 / (2.0f * Q);
-        const float a0r = 1.0f / (1.0f + alpha);
-
-        float bqB0, bqB1, bqB2;
-        if (fFilterType >= 0.5f)
-        {
-            // LPF
-            bqB0 = (1.0f - cosW0) * 0.5f * a0r;
-            bqB1 = (1.0f - cosW0) * a0r;
-            bqB2 = (1.0f - cosW0) * 0.5f * a0r;
-        }
-        else
-        {
-            // HPF
-            bqB0 = (1.0f + cosW0) * 0.5f * a0r;
-            bqB1 = -(1.0f + cosW0) * a0r;
-            bqB2 = (1.0f + cosW0) * 0.5f * a0r;
-        }
-        const float bqA1 = -2.0f * cosW0 * a0r;
-        const float bqA2 = (1.0f - alpha) * a0r;
-
-        // Apply filter sample-by-sample to outputs
-        float* outL = outputs[0];
-        float* outR = outputs[1];
-        for (uint32_t i = 0; i < frames; ++i)
-        {
-            const float inL = outL[i];
-            const float yL = bqB0 * inL + bqB1 * fBqX1L + bqB2 * fBqX2L
-                           - bqA1 * fBqY1L - bqA2 * fBqY2L;
-            fBqX2L = fBqX1L; fBqX1L = inL;
-            fBqY2L = fBqY1L; fBqY1L = yL;
-            outL[i] = yL;
-
-            const float inR = outR[i];
-            const float yR = bqB0 * inR + bqB1 * fBqX1R + bqB2 * fBqX2R
-                           - bqA1 * fBqY1R - bqA2 * fBqY2R;
-            fBqX2R = fBqX1R; fBqX1R = inR;
-            fBqY2R = fBqY1R; fBqY1R = yR;
-            outR[i] = yR;
         }
     }
 

@@ -86,6 +86,24 @@ private:
     float fPitchLock;      // 0/1
     float fFilterType;     // 0=HPF, 1=LPF
 
+    // Delay
+    float fDelayMix;       // 0..1
+    float fDelayTime;      // ms, 1..2000
+    float fDelayFeedback;  // 0..0.98
+    float fDelayHPF;       // Hz, 20..2000
+
+    std::vector<float> delayBufL;
+    std::vector<float> delayBufR;
+    uint32_t delayWriteIdx = 0;
+    uint32_t delayLen = 0;
+
+    float fDlyHpX1L = 0.0f, fDlyHpX2L = 0.0f, fDlyHpY1L = 0.0f, fDlyHpY2L = 0.0f;
+    float fDlyHpX1R = 0.0f, fDlyHpX2R = 0.0f, fDlyHpY1R = 0.0f, fDlyHpY2R = 0.0f;
+    float fDlyHpB0 = 1.0f, fDlyHpB1 = 0.0f, fDlyHpB2 = 0.0f, fDlyHpA1 = 0.0f, fDlyHpA2 = 0.0f;
+
+    void delayInit();
+    void delayUpdate();
+
     // Reverb
     float fRevMix;     // 0..1
     float fRevLength;  // 0..1 (maps to delay scaling)
