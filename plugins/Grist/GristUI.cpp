@@ -695,7 +695,6 @@ bool GristUI::onMouse(const MouseEvent& ev)
         if (hitTestModBox(mx, my, mt, ms))
         {
             mod[(uint32_t)mt][(uint32_t)ms].src = ModSource::None;
-            mod[(uint32_t)mt][(uint32_t)ms].amt = 0.0f;
             pushModMatrixState();
             repaint();
             return true;
